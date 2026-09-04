@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive icon (API 26+): solid brand background + transparent “B” foreground.
+  <monochrome> enables Material You / themed icons (Android 13+, MIUI themed icons).
+  Canvas 108dp; OEM masks clip the outer ~18dp — keep glyph recognizable under circle/squircle.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
+</adaptive-icon>
