@@ -1,95 +1,93 @@
-# Data, API & Sync
+# Daten, API & Sync
 
 ## URLs (`BookmerUrls`)
 
-| Constant | Value | Use |
-|----------|-------|-----|
-| `HOME` | `bookmer://collection` | Native Collection start |
-| `API` | `https://api.bookmer.com` | REST + icons |
-| `LOGIN` | `https://www.bookmer.com/login` | Web login sheet |
-| `ACCOUNT` | `https://id.bookmer.com` | Account management |
-| `HELP` | `https://help.bookmer.com` | Help |
-| `ROOT` | `/` | Collection root parent id |
-| `ARCHIVE` | `archive` | Archive folder id |
-| `TAGS` | `__bm_tags` | Tags pseudo-folder |
-| `HIDDEN` | `Undefined` | Hidden/archived bookmark parent quirk |
+| Konstante | Wert | Nutzung |
+|-----------|------|---------|
+| `HOME` | `bookmer://collection` | Native Collection-Start |
+| `API` | `https://api.bookmer.com` | REST + Icons |
+| `LOGIN` | `https://www.bookmer.com/login` | Web-Login-Sheet |
+| `ACCOUNT` | `https://id.bookmer.com` | Account-Verwaltung |
+| `HELP` | `https://help.bookmer.com` | Hilfe |
+| `ROOT` | `/` | Collection-Root-Parent |
+| `ARCHIVE` | `archive` | Archiv-Ordner-ID |
+| `TAGS` | `__bm_tags` | Tags-Pseudo-Ordner |
+| `HIDDEN` | `Undefined` | Hidden/Archiv-Parent-Quirk |
 
-## Guest vs signed-in
+## Gast vs. angemeldet
 
-1. **Guest (local-first)**  
-   - On empty library → `BookmarkRepository.seedDefaults()` loads `assets/global_list.json`.  
-   - No Bearer token. Icons that are public CDN/host favicons still work; private `api.bookmer.com` assets may not.
+1. **Gast (local-first)**  
+   - Leere Library → `BookmarkRepository.seedDefaults()` lädt `assets/global_list.json`.  
+   - Kein Bearer-Token. Öffentliche Favicons funktionieren; private `api.bookmer.com`-Assets oft nicht.
 
-2. **Signed-in**  
-   - Token in `SecureSessionStore` (from `LoginWebSheet` / cookie bridge or email login).  
-   - `BookmerSyncService.pull()` walks the remote tree and replaces/merges into local items.  
-   - Mutations call `pushCreate` / `pushRename` / `pushMove` / `pushDelete` / `pushOrder` / `pushView`.
+2. **Angemeldet**  
+   - Token in `SecureSessionStore` (LoginWebSheet / Cookie-Bridge oder E-Mail-Login).  
+   - `BookmerSyncService.pull()` läuft den Remote-Baum und merge’t in lokale Items.  
+   - Mutationen: `pushCreate` / `pushRename` / `pushMove` / `pushDelete` / `pushOrder` / `pushView`.
 
-## API surface used by the app (`BookmerApiClient`)
+## API (`BookmerApiClient`)
 
-Base: `https://api.bookmer.com` — Bearer token when authenticated.
+Basis: `https://api.bookmer.com` — Bearer bei Authentifizierung.
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| POST | `/user/access` | Email/password login |
-| GET | `/user` | Profile, wallpaper fields, PRO flags |
-| PATCH | `/user` | e.g. root `contentView` |
-| GET | `/object?path=` | Folder listing |
-| GET | `/object/archive?...` | Archive walk |
-| GET | `/object/note_tags` | Tag presence |
-| POST | `/bookmark?path=` | Create bookmark |
-| POST | `/folder?path=` | Create folder |
-| PATCH | `/bookmark?id=` / `/folder?id=` | Rename / move / archive |
-| DELETE | `/object/trash?id=&t=` | Soft delete |
-| PATCH | `/object/update_order` | Reorder |
-| GET/POST | `/object/trash`, `/object/broken_links` | Bookmark tools |
-| POST | `/pay/google` | Register Play subscription token |
-| (icons) | `/iconscollection/{host}` | Default host icons |
-| (assets) | `/user/wallpaper/…`, `/object/navigation_icons/…`, etc. | Authenticated images |
+| Methode | Pfad | Zweck |
+|---------|------|-------|
+| POST | `/user/access` | E-Mail/Passwort-Login |
+| GET | `/user` | Profil, Wallpaper, PRO-Flags |
+| PATCH | `/user` | z. B. Root-`contentView` |
+| GET | `/object?path=` | Ordnerlisting |
+| GET | `/object/archive?...` | Archiv-Walk |
+| GET | `/object/note_tags` | Tag-Präsenz |
+| POST | `/bookmark?path=` | Bookmark anlegen |
+| POST | `/folder?path=` | Ordner anlegen |
+| PATCH | `/bookmark?id=` / `/folder?id=` | Umbenennen / Verschieben / Archivieren |
+| DELETE | `/object/trash?id=&t=` | Soft-Delete |
+| PATCH | `/object/update_order` | Neuordnen |
+| GET/POST | `/object/trash`, `/object/broken_links` | Bookmark-Tools |
+| POST | `/pay/google` | Play-Abo-Token registrieren |
+| (Icons) | `/iconscollection/{host}` | Host-Icons |
+| (Assets) | `/user/wallpaper/…`, `/object/navigation_icons/…` | Auth-Bilder |
 
-### Library pull algorithm
+### Library-Pull
 
-`fetchLibrary` mirrors iOS/platform:
+`fetchLibrary` spiegelt iOS/Platform:
 
-1. Walk folders-only (`only_folders=1&sidebar_tree=3`) for main tree, then full listings.
-2. Same for archive (best-effort).
-3. Force parent id to the path being queried (API `parent` is often blank/wrong) — same as iOS `forceParent`.
+1. Zuerst nur Ordner (`only_folders=1&sidebar_tree=3`), dann volle Listings.
+2. Entsprechend für Archiv (best effort).
+3. Parent-ID auf den abgefragten Pfad erzwingen (API-`parent` oft leer/falsch) — wie iOS `forceParent`.
 
-## `BookmerItem` (Collection tile)
-
-Shared with platform/iOS conceptual model:
+## `BookmerItem` (Collection-Kachel)
 
 - `kind`: BOOKMARK | FOLDER  
 - `title`, `targetUrl`, `parentId`, `order`  
-- Icon framing: `iconUrl`, `iconBackground`, `iconX`, `iconY`, `iconZoom`  
-- Preview / thumbnail mode: `previewImage`, `customPreview*`  
-- `contentView` per folder (grid / list / thumbnail)  
-- `remoteId` for server id when local id differs  
+- Icon: `iconUrl`, `iconBackground`, `iconX`, `iconY`, `iconZoom`  
+- Preview/Thumbnail: `previewImage`, `customPreview*`  
+- `contentView` pro Ordner (Grid / List / Thumbnail)  
+- `remoteId` wenn Server-ID ≠ lokal  
 
-Default bookmark `iconZoom` is `-22` (platform parity). Phone Collection grid: **4 columns**, tile icon size **66.dp**.
+Standard-Bookmark-`iconZoom`: `-22`. Phone-Grid: **4 Spalten**, Icon **66.dp**.
 
-## Icons after login
+## Icons nach Login
 
 `BookmerIconUrl` + `RemoteImage` (`ui/Common.kt`):
 
-- Resolve relative API paths to absolute `https://api.bookmer.com/...`.
-- Requests to authenticated asset paths must send **Bearer** from `SecureSessionStore`.
-- Without auth headers, signed-in Collection icons look broken.
+- Relative API-Pfade → `https://api.bookmer.com/...`.
+- Auth-Assets brauchen **Bearer** aus `SecureSessionStore`.
+- Ohne Auth wirken angemeldete Collection-Icons kaputt.
 
-## Session / PRO flags
+## Session / PRO
 
 `BookmerSession`: `token`, `email`, `name`, `avatarUrl`, `accountType`, `hasPro`.
 
-`hasPro` is updated from:
+`hasPro` kommt von:
 
-- `GET /user` (lifetimeDeal / subscription.active / … — see ViewModel profile sync), and/or  
-- Google Play entitlement via `BookmerProStore` (`hasPlayEntitlement || session.hasPro`).
+- `GET /user` (lifetimeDeal / subscription.active / …), und/oder  
+- Google-Play-Entitlement über `BookmerProStore` (`hasPlayEntitlement || session.hasPro`).
 
-## History vs Tab History
+## History vs. Tab History
 
-| Concept | Storage | Overlay |
-|---------|---------|---------|
-| Global history | `HistoryRepository` | `Overlay.HISTORY` |
-| Current tab back-forward list | WebView / ViewModel `TabHistoryEntry` | `Overlay.TAB_HISTORY` |
+| Konzept | Speicher | Overlay |
+|---------|----------|---------|
+| Globaler Verlauf | `HistoryRepository` | `Overlay.HISTORY` |
+| Back-Forward des aktuellen Tabs | WebView / ViewModel `TabHistoryEntry` | `Overlay.TAB_HISTORY` |
 
-Never open global history when the user asked for Tab History.
+Nie den globalen Verlauf öffnen, wenn Tab History gemeint ist.

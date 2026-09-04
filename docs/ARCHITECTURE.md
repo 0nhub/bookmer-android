@@ -1,21 +1,21 @@
-# Architecture — Bookmer Browser (Android)
+# Architektur — Bookmer Browser (Android)
 
-Companion to root [`AGENTS.md`](../AGENTS.md). Read that first for the file map and hard rules.
+Begleitdokument zu [`AGENTS.md`](../AGENTS.md). Zuerst dort lesen.
 
 ## Stack
 
-| Layer | Choice |
-|-------|--------|
-| Language | Kotlin |
+| Schicht | Wahl |
+|---------|------|
+| Sprache | Kotlin |
 | UI | Jetpack Compose + Material 3 |
-| Browser engine | Android `WebView` (not Chromium Custom Tabs as the shell) |
-| Min / target SDK | 24 / 37 |
-| App ID | `com.bookmer.browser` |
-| Version | see `app/build.gradle.kts` (`versionName` / `versionCode`) |
-| Billing | Google Play Billing Library (`billing-ktx`) |
-| SVG icons | AndroidSVG |
+| Browser-Engine | Android `WebView` (nicht Custom Tabs als Shell) |
+| Min / Target SDK | 24 / 37 |
+| App-ID | `com.bookmer.browser` |
+| Version | siehe `app/build.gradle.kts` (`versionName` / `versionCode`) |
+| Billing | Google Play Billing (`billing-ktx`) |
+| SVG-Icons | AndroidSVG |
 
-## Process model
+## Prozessmodell
 
 ```
 BookmerApplication.onCreate()
@@ -24,79 +24,77 @@ BookmerApplication.onCreate()
        sitePermissions, hiddenElements, alias,
        api, sync, pro
   → TabPreviewStore.init()
-  → WebView debugging if debuggable
+  → WebView-Debugging falls debuggable
 
-MainActivity (Compose host)
+MainActivity (Compose-Host)
   → BrowserViewModel
   → BookmerApp()
 ```
 
-`BookmerServices` is a process-wide singleton (not a DI framework). UI and ViewModel read it directly.
+`BookmerServices` ist ein Prozess-Singleton (kein DI-Framework). UI und ViewModel greifen direkt darauf zu.
 
-## Layering (do not invert)
+## Schichten (nicht umkehren)
 
-| Layer | Owns | Must not own |
-|-------|------|----------------|
-| `ui/*` | Compose screens, menus, gestures | HTTP, file I/O for library |
-| `browser/BrowserViewModel` | Tabs, overlays, navigation commands, transient UI flags | Raw SharedPreferences / API wire format |
-| `data/*` | Models, JSON persistence, API, sync, billing, permissions stores | Compose |
-| `integration/*` | Widgets, share target, QS tiles, deep links | Collection grid layout |
+| Schicht | Besitzt | Darf nicht besitzen |
+|---------|---------|---------------------|
+| `ui/*` | Compose-Screens, Menüs, Gesten | HTTP, Datei-I/O für die Library |
+| `browser/BrowserViewModel` | Tabs, Overlays, Navigationsbefehle, transienter UI-Zustand | Roh-SharedPreferences / API-Wire-Format |
+| `data/*` | Modelle, JSON-Persistenz, API, Sync, Billing, Permission-Stores | Compose |
+| `integration/*` | Widgets, Share-Target, QS-Tiles, Deep Links | Collection-Grid-Layout |
 
-## Start URL / home
+## Start-URL / Home
 
-- Logical home: `bookmer://collection` (`BookmerUrls.HOME`).
-- When `BrowserTab.isBookmerHome == true`, the shell shows **`CollectionScreen`**, not a WebView of bookmer.com.
-- WebView is only for user-opened `http(s)` pages (and some special navigations).
+- Logische Home: `bookmer://collection` (`BookmerUrls.HOME`).
+- Bei `BrowserTab.isBookmerHome == true` zeigt die Shell **`CollectionScreen`**, kein WebView von bookmer.com.
+- WebView nur für vom Nutzer geöffnete `http(s)`-Seiten (und Spezialfälle).
 
-## Tab model
+## Tab-Modell
 
-`BrowserTab` fields that matter:
+Wichtige `BrowserTab`-Felder:
 
-- `isBookmerHome` — Collection vs web
-- `url` — current page when web
-- `folderPath` — Collection folder stack for that tab’s home context
+- `isBookmerHome` — Collection vs. Web
+- `url` — aktuelle Seite im Web
+- `folderPath` — Collection-Ordnerstapel dieses Tabs
 - `prefersDesktopWebsite`, `pageZoom`, `autoRefreshSeconds`, `isPageTranslated`
 
-Tabs are held in `BrowserViewModel`; previews are bitmaps on disk via `TabPreviewStore` (capture **before** opening the tabs overlay).
+Tabs liegen in `BrowserViewModel`; Previews als Bitmaps auf Disk über `TabPreviewStore` (Capture **vor** Öffnen des Tab-Overlays).
 
-## Chrome visibility
+## Chrome-Sichtbarkeit
 
-Controlled in `BookmerApp` + `BrowserChrome`:
+Gesteuert in `BookmerApp` + `BrowserChrome`:
 
-1. **Scroll hide/show** — scrolling down collapses chrome; scrolling up expands (when `hideToolbar` setting allows).
-2. **Swipe-down sticky** — swipe down on the address chrome → sticky collapsed strip (`n/m` tab indicator); tap restores.
-3. **Immersive / full screen** — separate from sticky collapse (`enterImmersive` / `ImmersiveExit`).
+1. **Scroll hide/show** — nach unten scrollen klappt Chrome ein; nach oben wieder aus (wenn Setting `hideToolbar` das erlaubt).
+2. **Swipe-down Sticky** — Wischen nach unten auf der Adressleiste → eingeklappter Sticky-Streifen (`n/m`); Tippen stellt wieder her.
+3. **Immersive / Vollbild** — getrennt vom Sticky-Collapse (`enterImmersive` / `ImmersiveExit`).
 
 ## Theme
 
-- App preference: `ThemeMode` = SYSTEM | LIGHT | DARK (`AppSettings.theme`).
-- UI must use **`bookmerIsDarkTheme()`** (in `ui/theme/Theme.kt`), **not** raw `isSystemInDarkTheme()`, so Light mode stays light even when the OS is dark.
-- Collection wallpaper can override label colors via `wallpaperTextColor`.
+- App-Einstellung: `ThemeMode` = SYSTEM | LIGHT | DARK (`AppSettings.theme`).
+- UI muss **`bookmerIsDarkTheme()`** nutzen (`ui/theme/Theme.kt`), **nicht** roh `isSystemInDarkTheme()`, damit Light hell bleibt, auch wenn das OS dunkel ist.
+- Collection-Wallpaper kann Label-Farben über `wallpaperTextColor` überschreiben.
 
-## Persistence files (local-first)
+## Persistenz (local-first)
 
-Typical app-private JSON (names are illustrative of intent; see repository classes):
-
-| Store | Class | Purpose |
-|-------|-------|---------|
-| Bookmarks / folders | `BookmarkRepository` | Collection tree |
-| History | `HistoryRepository` | Global visit history |
+| Store | Klasse | Zweck |
+|-------|--------|-------|
+| Bookmarks / Ordner | `BookmarkRepository` | Collection-Baum |
+| History | `HistoryRepository` | Globaler Besucherverlauf |
 | Settings | `PreferencesRepository` | `AppSettings` |
-| Session | `SecureSessionStore` | Token + profile + `hasPro` |
-| Site permissions | `SitePermissionStore` | Camera / mic / location policies |
-| Hidden elements | `HiddenElementsStore` | CSS hide rules |
-| Alias | `AliasStore` | Spoof country/language/TZ/UA |
-| Tab previews | `TabPreviewStore` | Preview images |
-| Shortcuts | `LaunchShortcutStore` + settings.shortcuts | Widget / QS tile bindings |
+| Session | `SecureSessionStore` | Token + Profil + `hasPro` |
+| Site-Permissions | `SitePermissionStore` | Kamera / Mic / Ort |
+| Hidden Elements | `HiddenElementsStore` | CSS-Hide-Regeln |
+| Alias | `AliasStore` | Spoof Land/Sprache/TZ/UA |
+| Tab-Previews | `TabPreviewStore` | Vorschaubilder |
+| Shortcuts | `LaunchShortcutStore` + settings.shortcuts | Widget- / QS-Bindings |
 
-Guest Collection seed: asset `app/src/main/assets/global_list.json` (platform `GET /data/default` snapshot).
+Guest-Collection-Seed: Asset `app/src/main/assets/global_list.json` (Platform-Default-Liste).
 
-## Related trees (sibling products)
+## Verwandte Bäume
 
-| Tree | Role |
-|------|------|
-| `Bookmer/Code/bookmer-platform` | Source of truth for Collection visuals + API semantics |
-| `Bookmer/Code/browser/iOS` | Behavioral / menu parity for the native browser |
-| Backend `api.bookmer.com` | `/object`, `/user`, `/pay/google`, icons, wallpapers |
+| Baum | Rolle |
+|------|-------|
+| `Bookmer/Code/bookmer-platform` | Quelle für Collection-Optik + API-Semantik |
+| `Bookmer/Code/browser/iOS` | Verhaltens-/Menü-Parität |
+| Backend `api.bookmer.com` | `/object`, `/user`, `/pay/google`, Icons, Wallpapers |
 
-Do not invent Collection layout tokens; match platform SCSS / iOS first.
+Collection-Layout-Tokens nicht erfinden — zuerst Platform-SCSS / iOS.

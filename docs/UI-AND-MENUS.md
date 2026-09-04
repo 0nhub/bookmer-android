@@ -1,62 +1,62 @@
-# UI, Chrome & Menus
+# UI, Chrome & Menüs
 
-Parity target: **iOS Bookmer Browser** + **bookmer-platform Collection**.
+Paritätsziel: **iOS Bookmer Browser** + **bookmer-platform Collection**.
 
-## Shell composition (`BookmerApp`)
+## Shell (`BookmerApp`)
 
 ```
 BookmerBrowserTheme
-└─ SetupWelcomeScreen          if !setupCompleted
-└─ else Browser shell
-     ├─ CollectionScreen OR BrowserWebView (+ Reader / Blocked)
-     ├─ BrowserChrome (address + toolbars + menus)
+└─ SetupWelcomeScreen          falls !setupCompleted
+└─ sonst Browser-Shell
+     ├─ CollectionScreen ODER BrowserWebView (+ Reader / Blocked)
+     ├─ BrowserChrome (Adresse + Toolbars + Menüs)
      ├─ FindBar / HideElementsPickBar / ImmersiveExit
-     └─ Overlay host (Tabs, Settings, History, …)
-└─ LoginWebSheet when login requested
+     └─ Overlay-Host (Tabs, Settings, History, …)
+└─ LoginWebSheet bei Login-Anfrage
 └─ BookmerDialogs
 ```
 
 ## Collection (`CollectionScreen`)
 
-- Wallpaper layer (blur + dim) from `AppSettings`.
-- Grid: `GridCells.Fixed(4)`, icons ~66.dp, rounded corners from settings / folder style.
-- Drag reorder → `bookmarks.reorder` → sync `pushOrder`.
-- Folder navigation via `folderStack` / Navigate overlay.
-- Overflow (⋯) on Collection uses **Folder** submenu (not the web Page menu).
+- Wallpaper-Ebene (Blur + Dim) aus `AppSettings`.
+- Grid: `GridCells.Fixed(4)`, Icons ~66.dp, Rundungen je Setting/Ordnerstil.
+- Drag-Reorder → `bookmarks.reorder` → Sync `pushOrder`.
+- Ordnernavigation über `folderStack` / Navigate-Overlay.
+- Overflow (⋯) auf Collection nutzt das **Folder**-Untermenü (nicht das Web-Page-Menü).
 
-## Collection ⋯ menu (home)
+## Collection-⋯-Menü (Home)
 
-Root items (approx.): Settings · Clear Data · **Folder ›** · Bookmarks › (if signed in) · New Tab.
+Root (ca.): Settings · Clear Data · **Folder ›** · Bookmarks › (wenn angemeldet) · New Tab.
 
 **Folder ›**
 
-| Item | Behavior |
-|------|----------|
-| New Folder | Dialog → local + `sync.pushCreate` |
-| Share | Share folder page (signed-in) |
-| Sort by › | A→Z, Z→A, New→Old, Old→New (`SortMode`) — one-shot rewrite of `order` |
+| Eintrag | Verhalten |
+|---------|-----------|
+| New Folder | Dialog → lokal + `sync.pushCreate` |
+| Share | Ordner-Share-Seite (angemeldet) |
+| Sort by › | A→Z, Z→A, Neu→Alt, Alt→Neu (`SortMode`) — einmaliges Umschreiben von `order` |
 | View style › | Default / Grid / List / Thumbnail (`ContentViewMode`) |
 
-**Bookmarks ›** (signed-in): Broken links · Recover · Shared folder → `Overlay.BOOKMARK_TOOLS`.
+**Bookmarks ›** (angemeldet): Broken links · Recover · Shared folder → `Overlay.BOOKMARK_TOOLS`.
 
-## Web ⋯ menu
+## Web-⋯-Menü
 
 Root: Settings · **Page ›** · Hide Element · Translate · Share · Collect · New Tab.
 
 **Page ›**
 
 - Print · Create PDF · Open in WebArchive · Report Page · Remove Data · Connection Details  
-- Camera › · Microphone › · Location › — policies Ask / Deny / Allow (`SitePermissionStore`)
+- Camera › · Microphone › · Location › — Ask / Deny / Allow (`SitePermissionStore`)
 
-## Other chrome menus
+## Weitere Chrome-Menüs
 
-- **Navigate** long-press / menu: Navigate · Tabs · Tab History · Forward (web).
-- **Action** menu: Full Screen · Reader · Search · Zoom · Desktop View (customizable via Settings `ToolbarAction` defaults).
+- **Navigate:** Navigate · Tabs · Tab History · Forward (Web).
+- **Action:** Full Screen · Reader · Search · Zoom · Desktop View (Defaults über Settings `ToolbarAction`).
 
 ## Overlays (`enum Overlay`)
 
-| Value | Screen |
-|-------|--------|
+| Wert | Screen |
+|------|--------|
 | `TABS` | `TabsSwitcherScreen` |
 | `SETTINGS` | `SettingsScreen` |
 | `HISTORY` | `HistoryScreen` (global) |
@@ -65,29 +65,29 @@ Root: Settings · **Page ›** · Hide Element · Translate · Share · Collect 
 | `NAVIGATE` | `NavigateScreen` |
 | `BOOKMARK_TOOLS` | `BookmarkToolsScreen` |
 
-## Menu building blocks
+## Menü-Bausteine
 
 `ModernMenu.kt`: `BookmerMenu`, `BookmerMenuItem`, `BookmerSubmenuHeader`, `BookmerMenuDivider`.  
-Nested sheets in chrome use `ChromeSheet` enum (FOLDER, SORT, VIEW, PAGE, CAMERA, …).
+Verschachtelte Sheets im Chrome: `ChromeSheet` (FOLDER, SORT, VIEW, PAGE, CAMERA, …).
 
-## Settings highlights
+## Settings (Auszug)
 
-- Theme (use `bookmerIsDarkTheme()` for UI chrome).
-- Wallpaper / blur / dim / label color.
-- Hide titles · Hide Toolbar (enables scroll + sticky collapse behavior).
-- Search engine (+ custom engines).
-- Privacy blockers (cookies, trackers, popups, app banners, YouTube ads).
-- Blocked sites.
-- Translate language.
-- Alias / metadata spoof (also `AliasStore`).
-- Shortcuts for widgets & QS tiles.
-- Start / web navigation button actions.
-- Subscription / PRO (`BookmerProStore` UI section).
-- Hidden elements management.
+- Theme (`bookmerIsDarkTheme()` für UI).
+- Wallpaper / Blur / Dim / Label-Farbe.
+- Hide titles · Hide Toolbar (Scroll + Sticky-Collapse).
+- Suchmaschine (+ eigene Engines).
+- Privacy-Blocker (Cookies, Tracker, Popups, App-Banner, YouTube-Ads).
+- Blockierte Sites.
+- Translate-Sprache.
+- Alias / Metadata-Spoof (`AliasStore`).
+- Shortcuts für Widgets & QS-Tiles.
+- Start-/Web-Navigationsbutton-Aktionen.
+- Abo / PRO (`BookmerProStore`).
+- Hidden-Elements-Verwaltung.
 
-## Integrations (`AndroidIntegrations.kt`)
+## Integrationen (`AndroidIntegrations.kt`)
 
-- `ShareReceiverActivity` — share URL into app.
-- `BookmerWidgetProvider` + configure activity.
-- Quick Settings tiles A/B + configure.
-- Deep links: `http`/`https` VIEW + `bookmer://` scheme.
+- `ShareReceiverActivity` — URL in die App teilen.
+- `BookmerWidgetProvider` + Configure-Activity.
+- Quick-Settings-Tiles A/B + Configure.
+- Deep Links: `http`/`https` VIEW + Schema `bookmer://`.

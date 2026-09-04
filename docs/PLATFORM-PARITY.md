@@ -1,40 +1,40 @@
-# Platform & iOS parity
+# Platform- & iOS-Parität
 
-## Non-negotiable product rules
+## Harte Produktregeln
 
-1. **Start page = native Collection**, never bookmer.com marketing landing.
-2. Collection **looks and behaves** like bookmer-platform dashboard Collection (wallpaper, theme, icon radius/pan/zoom/background, 66px tiles, 4-col phone grid, folder nav, settings for wallpaper/view/theme).
-3. **Local-first** data; guest seed from bundled `global_list.json` (platform default list).
-4. Signed-in sync via `api.bookmer.com` (`/object`, `/user`, wallpaper fields).
-5. **WebView only** for browsing user-opened websites.
-6. Before inventing UI tokens, read platform SCSS/components (`UserDashboard`, Bookmarks, wallpaper, sizes, colors) and iOS browser sources.
+1. **Startseite = native Collection**, nie bookmer.com-Marketing.
+2. Collection **sieht aus und verhält sich** wie die bookmer-platform-Dashboard-Collection (Wallpaper, Theme, Icon-Radius/Pan/Zoom/Hintergrund, 66-px-Tiles, 4-Spalten-Phone-Grid, Ordnernav, Settings für Wallpaper/View/Theme).
+3. **Local-first**; Guest-Seed aus gebündeltem `global_list.json`.
+4. Sync angemeldet über `api.bookmer.com` (`/object`, `/user`, Wallpaper-Felder).
+5. **WebView nur** für vom Nutzer geöffnete Websites.
+6. Bevor UI-Tokens erfunden werden: Platform-SCSS/Komponenten und iOS-Browser lesen.
 
-## Where to look for “how it should work”
+## Wo nachschauen
 
-| Concern | Prefer reading |
-|---------|----------------|
-| Tile size, grid, wallpaper | `bookmer-platform` Collection / dashboard SCSS + iOS Collection views |
-| Overflow menus (Folder / Page) | iOS browser chrome menus |
-| Sync walk / parent forcing | iOS library sync + this app’s `BookmerApiClient.fetchLibrary` |
-| Icon URL resolution | Platform + `BookmerIconUrl.kt` |
-| PRO unlock | iOS StoreKit + shared `/user` PRO fields; Android `/pay/google` |
+| Thema | Bevorzugt lesen |
+|-------|-----------------|
+| Tile-Größe, Grid, Wallpaper | bookmer-platform Collection/Dashboard-SCSS + iOS Collection |
+| Overflow-Menüs (Folder / Page) | iOS Browser-Chrome-Menüs |
+| Sync-Walk / Parent-Erzwingen | iOS Library-Sync + `BookmerApiClient.fetchLibrary` |
+| Icon-URL-Auflösung | Platform + `BookmerIconUrl.kt` |
+| PRO | iOS StoreKit + gemeinsame `/user`-PRO-Felder; Android `/pay/google` |
 
-## Android-specific surfaces (OK to differ)
+## Android-spezifisch (Unterschiede ok)
 
-- Material 3 / Compose chrome chrome (not UIKit).
-- Android widgets, share target, Quick Settings tiles.
-- Google Play Billing (vs StoreKit).
-- System permission prompts for camera/mic/location.
+- Material 3 / Compose-Chrome (nicht UIKit).
+- Android-Widgets, Share-Target, Quick-Settings-Tiles.
+- Google Play Billing (statt StoreKit).
+- System-Permission-Dialoge für Kamera/Mic/Ort.
 
-Behavior and information architecture should still match iOS where both products offer the same feature.
+Informationsarchitektur soll dort, wo beide Produkte dasselbe Feature haben, iOS entsprechen.
 
-## Path hygiene
+## Pfad-Hygiene
 
-| Path | Status |
+| Pfad | Status |
 |------|--------|
-| `…/Bookmer/android` | **Canonical live tree** — edit here |
-| `…/Bookmer/android/backups/` | Snapshot copies + `.tar.gz` |
-| `…/Bookmer/Code/browser/android-MOVED-TO-Bookmer-android` | Abandoned stub — do not revive |
-| `~/Bookmer/browser-android` | Optional local mirror (non-iCloud) for tooling |
+| `…/Bookmer/android` | **Kanonischer Live-Tree** — hier editieren |
+| `…/Bookmer/android/backups/` | Snapshot-Kopien + `.tar.gz` |
+| `…/Bookmer/Code/browser/android-MOVED-TO-Bookmer-android` | Verlassen — nicht wiederbeleben |
+| `~/Bookmer/browser-android` | Optional-Mirror (non-iCloud) |
 
-Agents must state clearly after moves where the live tree and latest backup are.
+Nach Verschiebungen klar sagen, wo Live-Tree und aktuelles Backup liegen.

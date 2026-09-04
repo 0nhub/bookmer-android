@@ -1,9 +1,8 @@
-# Bookmer Browser (Android) — AI-Übergabe
+# Bookmer Browser (Android) — Übergabe
 
 **Lies diese Datei zuerst.** Sie ist die Landkarte für jede neue Session.
 
-Vertiefung (vollständig für andere Plattformen/KIs): Ordner **[`docs/`](./docs/)**  
-→ Start dort mit [`docs/HANDOFF.md`](./docs/HANDOFF.md).
+Vertiefung: Ordner **[`docs/`](./docs/)** — Start mit [`docs/HANDOFF.md`](./docs/HANDOFF.md).
 
 Wenn etwas unklar ist: hier nachschlagen, dann die genannte Datei öffnen — nicht raten.
 
@@ -42,12 +41,12 @@ Native **Android-Browser-App** für Bookmer.
 
 | Datei | Inhalt |
 |-------|--------|
-| [`docs/HANDOFF.md`](./docs/HANDOFF.md) | Pflicht-Leseorder für fremde Agents |
+| [`docs/HANDOFF.md`](./docs/HANDOFF.md) | Pflicht-Leseorder |
 | [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | Schichten, Prozess, Persistenz, Theme, Chrome |
 | [`docs/DATA-AND-SYNC.md`](./docs/DATA-AND-SYNC.md) | API, Guest-Seed, Icons, Session |
-| [`docs/UI-AND-MENUS.md`](./docs/UI-AND-MENUS.md) | Collection/Web-Menüs, Overlays, Settings |
+| [`docs/UI-AND-MENUS.md`](./docs/UI-AND-MENUS.md) | Collection-/Web-Menüs, Overlays, Settings |
 | [`docs/BILLING.md`](./docs/BILLING.md) | Google Play PRO + `/pay/google` |
-| [`docs/PLATFORM-PARITY.md`](./docs/PLATFORM-PARITY.md) | iOS/Platform-Regeln, Pfad-Hygiene |
+| [`docs/PLATFORM-PARITY.md`](./docs/PLATFORM-PARITY.md) | iOS-/Platform-Regeln, Pfad-Hygiene |
 | [`docs/FILE-INDEX.md`](./docs/FILE-INDEX.md) | Alle Kotlin-Dateien |
 
 ---
@@ -57,7 +56,7 @@ Native **Android-Browser-App** für Bookmer.
 ```
 MainActivity
 └─ ui/BookmerApp.kt
-     ├─ Setup (Dialogs.kt) falls setup unvollständig
+     ├─ Setup (Dialogs.kt) falls Setup unvollständig
      ├─ Browser-Shell
      │    ├─ CollectionScreen     → Start / Ordner
      │    ├─ BrowserWebView       → Website
@@ -87,7 +86,7 @@ Vollständige Tabelle: [`docs/FILE-INDEX.md`](./docs/FILE-INDEX.md).
 | `BookmerApplication.kt` | App-Start; initialisiert `BookmerServices`, `TabPreviewStore` |
 | `MainActivity.kt` | Compose-Host; Permissions + File-Chooser für WebView |
 
-### `browser/` — Engine & State
+### `browser/` — Engine & Zustand
 
 | Datei | Aufgabe |
 |-------|---------|
@@ -142,17 +141,17 @@ Vollständige Tabelle: [`docs/FILE-INDEX.md`](./docs/FILE-INDEX.md).
 
 Definiert in `BrowserViewModel.kt` als `enum class Overlay`.
 
-| Overlay | Bedeutung | UI-Composable (in `Overlays.kt` / Tabs / Settings) |
-|---------|-----------|-----------------------------------------------------|
+| Overlay | Bedeutung | UI-Composable |
+|---------|-----------|---------------|
 | `TABS` | Tab-Manager | `TabsSwitcherScreen` |
 | `SETTINGS` | Einstellungen | `SettingsScreen` |
-| `HISTORY` | **Globaler** Verlauf (alles) | `HistoryScreen` |
+| `HISTORY` | **Globaler** Verlauf | `HistoryScreen` |
 | `TAB_HISTORY` | **Nur aktueller Tab** (WebView Back-Forward) | `TabHistoryScreen` |
 | `DOWNLOADS` | Downloads | `DownloadsScreen` |
 | `NAVIGATE` | Ordner-Navigator | `NavigateScreen` |
 | `BOOKMARK_TOOLS` | Bookmark-Werkzeuge | `BookmarkToolsScreen` |
 
-**Hard rule:** „Tab History“ öffnet `Overlay.TAB_HISTORY` — **nie** `HISTORY`.
+**Harte Regel:** „Tab History“ öffnet `Overlay.TAB_HISTORY` — **nie** `HISTORY`.
 
 ---
 
@@ -213,10 +212,10 @@ Nicht committen: `local.properties`, `keystore.properties`, `*.jks`, `*.keystore
 
 ---
 
-## 11. Arbeitsregeln für Agents
+## 11. Arbeitsregeln
 
 1. Kleine, gezielte Diffs — keine Drive-by-Refactors.
 2. Bei Unklarheit: diese Datei → `docs/HANDOFF.md` → Cheat-Sheet-Datei öffnen.
 3. Verhalten an iOS/Platform angleichen, wenn Collection/Chrome betroffen ist.
-4. Nach Datei-Verschiebungen im Reply klar sagen: wo Live-Tree und wo Backup liegt.
+4. Nach Datei-Verschiebungen klar sagen: wo Live-Tree und wo Backup liegt.
 5. Neue Features in `docs/` nachziehen, wenn Struktur oder API sich ändert.

@@ -1,51 +1,51 @@
-# Kotlin file index
+# Kotlin-Dateiindex
 
-Root package: `com.bookmer.browser`  
-Path prefix: `app/src/main/java/com/bookmer/browser/`
+Root-Package: `com.bookmer.browser`  
+Pfad-Präfix: `app/src/main/java/com/bookmer/browser/`
 
-| File | Responsibility |
-|------|----------------|
-| `BookmerApplication.kt` | Application; `BookmerServices` DI-less init |
-| `MainActivity.kt` | Compose host; WebView permission + file chooser hosts |
-| `browser/AddressResolver.kt` | Address bar → URL or search engine URL |
-| `browser/BrowserViewModel.kt` | Tabs, overlays, nav, translate, immersive, downloads, collect, previews |
-| `browser/BrowserWebView.kt` | WebView Compose, clients, JS bridges, UA/desktop |
-| `browser/HideElementsScript.kt` | JS injected for element picker / hide |
-| `data/AliasStore.kt` | Spoof OS/language/TZ/geo metadata |
-| `data/BookmerApiClient.kt` | HTTP API + `BookmerSyncService` |
-| `data/BookmerIconUrl.kt` | Resolve Collection icon/wallpaper URLs |
+| Datei | Aufgabe |
+|-------|---------|
+| `BookmerApplication.kt` | Application; `BookmerServices`-Init |
+| `MainActivity.kt` | Compose-Host; WebView-Permissions + File-Chooser |
+| `browser/AddressResolver.kt` | Adresszeile → URL oder Suchmaschinen-URL |
+| `browser/BrowserViewModel.kt` | Tabs, Overlays, Nav, Translate, Immersive, Downloads, Collect, Previews |
+| `browser/BrowserWebView.kt` | WebView-Compose, Clients, JS-Bridges, UA/Desktop |
+| `browser/HideElementsScript.kt` | JS für Element-Picker / Hide |
+| `data/AliasStore.kt` | Spoof OS/Sprache/TZ/Geo |
+| `data/BookmerApiClient.kt` | HTTP-API + `BookmerSyncService` |
+| `data/BookmerIconUrl.kt` | Collection-Icon-/Wallpaper-URLs auflösen |
 | `data/BookmerProStore.kt` | Google Play Billing + `/pay/google` |
-| `data/HiddenElementsStore.kt` | Persist hide rules; tip stores |
-| `data/LaunchShortcutStore.kt` | Widget / control tile bindings |
-| `data/Models.kt` | URLs, items, tabs, settings enums |
+| `data/HiddenElementsStore.kt` | Hide-Regeln; Tip-Stores |
+| `data/LaunchShortcutStore.kt` | Widget- / Control-Tile-Bindings |
+| `data/Models.kt` | URLs, Items, Tabs, Settings-Enums |
 | `data/PreferencesRepository.kt` | `AppSettings` + `SecureSessionStore` |
-| `data/Repositories.kt` | Bookmarks + history + guest seed |
-| `data/SitePermissions.kt` | Per-site camera/mic/location policies; page actions helpers |
-| `data/TabPreviewStore.kt` | Disk cache for tab thumbnails |
-| `integration/AndroidIntegrations.kt` | Share, widgets, QS tiles, deep links, shortcuts |
-| `ui/BookmerApp.kt` | Theme shell, overlay routing, chrome visibility |
-| `ui/BrowserChrome.kt` | Address bar, toolbars, nested menus, find, immersive tip |
-| `ui/CollectionScreen.kt` | Collection home grid |
-| `ui/Common.kt` | `RemoteImage` (+ auth), color helpers |
-| `ui/Dialogs.kt` | Setup welcome, blocked page, shared dialogs |
-| `ui/HideElementsUi.kt` | Pick bar, confirm, manage, settings section |
-| `ui/LoginWebSheet.kt` | Web login + token/cookie bridge |
-| `ui/ModernMenu.kt` | Shared overflow menu primitives |
-| `ui/Overlays.kt` | History, tab history, downloads, navigate, bookmark tools |
-| `ui/ReaderScreen.kt` | Reader mode |
-| `ui/SettingsScreen.kt` | Full settings UI |
-| `ui/TabsSwitcherScreen.kt` | Tab manager deck |
-| `ui/theme/Color.kt` | Color tokens |
-| `ui/theme/Theme.kt` | Material schemes + `bookmerIsDarkTheme()` |
-| `ui/theme/Type.kt` | Typography |
+| `data/Repositories.kt` | Bookmarks + History + Guest-Seed |
+| `data/SitePermissions.kt` | Kamera/Mic/Ort pro Site; Page-Action-Helfer |
+| `data/TabPreviewStore.kt` | Disk-Cache für Tab-Thumbnails |
+| `integration/AndroidIntegrations.kt` | Share, Widgets, QS-Tiles, Deep Links, Shortcuts |
+| `ui/BookmerApp.kt` | Theme-Shell, Overlay-Routing, Chrome-Sichtbarkeit |
+| `ui/BrowserChrome.kt` | Adressleiste, Toolbars, verschachtelte Menüs, Find, Immersive-Tip |
+| `ui/CollectionScreen.kt` | Collection-Home-Grid |
+| `ui/Common.kt` | `RemoteImage` (+ Auth), Farbhelfer |
+| `ui/Dialogs.kt` | Setup-Welcome, Blocked Page, Dialoge |
+| `ui/HideElementsUi.kt` | Pick-Bar, Confirm, Manage, Settings-Abschnitt |
+| `ui/LoginWebSheet.kt` | Web-Login + Token/Cookie-Bridge |
+| `ui/ModernMenu.kt` | Gemeinsame Overflow-Menü-Primitives |
+| `ui/Overlays.kt` | History, Tab History, Downloads, Navigate, Bookmark-Tools |
+| `ui/ReaderScreen.kt` | Reader Mode |
+| `ui/SettingsScreen.kt` | Settings-UI |
+| `ui/TabsSwitcherScreen.kt` | Tab-Manager-Deck |
+| `ui/theme/Color.kt` | Farbtokens |
+| `ui/theme/Theme.kt` | Material-Schemes + `bookmerIsDarkTheme()` |
+| `ui/theme/Type.kt` | Typografie |
 
-## Notable non-Kotlin assets
+## Weitere Assets
 
-| Path | Purpose |
-|------|---------|
-| `app/src/main/assets/global_list.json` | Guest Collection seed |
-| `app/src/main/AndroidManifest.xml` | Permissions, activities, widget, tiles, deep links |
-| `app/src/main/res/` | Launcher, widget layouts, themes, strings |
-| `gradle/libs.versions.toml` | Dependency versions (AGP, Compose BOM, Billing, …) |
-| `keystore.properties` | **Local only — never commit** |
-| `local.properties` | **SDK path — never commit** |
+| Pfad | Zweck |
+|------|-------|
+| `app/src/main/assets/global_list.json` | Guest-Collection-Seed |
+| `app/src/main/AndroidManifest.xml` | Permissions, Activities, Widget, Tiles, Deep Links |
+| `app/src/main/res/` | Launcher, Widget-Layouts, Themes, Strings |
+| `gradle/libs.versions.toml` | Dependency-Versionen |
+| `keystore.properties` | **Nur lokal — nie committen** |
+| `local.properties` | **SDK-Pfad — nie committen** |

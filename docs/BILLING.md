@@ -1,36 +1,36 @@
 # Billing — Google Play PRO
 
-## Product
+## Produkt
 
 | | |
 |--|--|
-| Play product id | `com.bookmer.browser.pro.yearly` |
-| Type | Auto-renewable yearly subscription |
-| Target price | €29 / year (store localizes display) |
-| Client class | `data/BookmerProStore.kt` |
+| Play-Product-ID | `com.bookmer.browser.pro.yearly` |
+| Typ | Jährliches Auto-Renew-Abo |
+| Zielpreis | 29 € / Jahr (Store lokalisiert die Anzeige) |
+| Client | `data/BookmerProStore.kt` |
 
-## Client flow
+## Client-Ablauf
 
-1. `BookmerProStore.start()` connects BillingClient, loads product details, refreshes purchases.
-2. Purchase → acknowledge → keep purchase token.
-3. If signed in → `BookmerApiClient.registerGoogleSubscription` → **`POST /pay/google`** with purchase token / package / product id.
-4. Server verifies with Google Play Developer API and writes the same PRO period row used by Stripe / Apple.
-5. `isPro` = Play entitlement **OR** `session.hasPro`.
+1. `BookmerProStore.start()` verbindet BillingClient, lädt Produktdetails, prüft Käufe.
+2. Kauf → Acknowledge → Purchase-Token behalten.
+3. Wenn angemeldet → `BookmerApiClient.registerGoogleSubscription` → **`POST /pay/google`** mit Token / Package / Product-ID.
+4. Server prüft über Google Play Developer API und schreibt dieselbe PRO-Periode wie Stripe / Apple.
+5. `isPro` = Play-Entitlement **oder** `session.hasPro`.
 
-## Backend (bookmer-platform — not in this repo)
+## Backend (bookmer-platform — nicht in diesem Repo)
 
-Expected pieces (may already exist in platform):
+Erwartete Teile:
 
 - Route `POST /pay/google`
 - Env: `GOOGLE_PLAY_PACKAGE_NAME`, `GOOGLE_PLAY_PRODUCT_IDS`, `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`
-- DB migration for Google subscriptions (e.g. `012_google_subscriptions.sql`)
+- DB-Migration für Google-Abos (z. B. `012_google_subscriptions.sql`)
 
-Production still requires: Play Console product configured for `com.bookmer.browser`, service account linked, migration applied, env set.
+Produktion: Play-Console-Produkt für `com.bookmer.browser`, Service-Account, Migration, Env gesetzt.
 
 ## UI
 
-Settings → Subscription / PRO section: price, purchase, restore, account sync error states (`isLoadingProduct`, `isPurchasing`, `isRestoring`, `accountSyncFailed`, …).
+Settings → Abo / PRO: Preis, Kauf, Restore, Sync-Fehlerzustände (`isLoadingProduct`, `isPurchasing`, `isRestoring`, `accountSyncFailed`, …).
 
-## iOS parity
+## iOS-Parität
 
-iOS uses StoreKit with an equivalent yearly PRO SKU; Android must keep account PRO state on the shared Bookmer user record via `/pay/google`, not a siloed Android-only flag.
+iOS nutzt StoreKit mit entsprechendem Jahres-PRO-SKU; Android hält den Account-PRO-Status über `/pay/google` am gemeinsamen Bookmer-User — kein isoliertes Android-only-Flag.

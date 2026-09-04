@@ -1,41 +1,41 @@
-# AI / cross-platform handoff
+# Übergabe
 
-This document is for **other agents, platforms, or humans** picking up Bookmer Android without prior chat context.
+Dieses Dokument dient der Übergabe des Bookmer-Android-Projekts ohne Vorwissen aus einem Chat.
 
-## What this project is
+## Was ist das?
 
-Native Android browser app for **Bookmer**: Collection home + WebView browsing + Bookmer account sync + Google Play PRO.
+Native Android-Browser-App für **Bookmer**: Collection-Startseite, WebView-Browsing, Account-Sync, Google-Play-PRO.
 
 - Package: `com.bookmer.browser`
-- Canonical root: `Bookmer/android` under the user’s Bookmer iCloud tree
-- Entry docs: **`AGENTS.md`** (required), then `docs/*`
+- Kanonischer Root: `Bookmer/android` im Bookmer-iCloud-Baum
+- Einstieg: **`AGENTS.md`** (pflicht), danach `docs/*`
 
-## Read order (mandatory)
+## Leseorder
 
-1. [`../AGENTS.md`](../AGENTS.md) — map, overlays, hard rules, cheat sheet  
-2. [`ARCHITECTURE.md`](./ARCHITECTURE.md) — layers, process, persistence  
-3. [`DATA-AND-SYNC.md`](./DATA-AND-SYNC.md) — API, guest seed, icons  
-4. [`UI-AND-MENUS.md`](./UI-AND-MENUS.md) — Collection/web menus, overlays  
+1. [`../AGENTS.md`](../AGENTS.md) — Landkarte, Overlays, harte Regeln, Cheat Sheet  
+2. [`ARCHITECTURE.md`](./ARCHITECTURE.md) — Schichten, Prozess, Persistenz  
+3. [`DATA-AND-SYNC.md`](./DATA-AND-SYNC.md) — API, Guest-Seed, Icons  
+4. [`UI-AND-MENUS.md`](./UI-AND-MENUS.md) — Collection-/Web-Menüs, Overlays  
 5. [`BILLING.md`](./BILLING.md) — Play PRO  
-6. [`PLATFORM-PARITY.md`](./PLATFORM-PARITY.md) — iOS/platform rules  
-7. [`FILE-INDEX.md`](./FILE-INDEX.md) — every Kotlin file in one table  
+6. [`PLATFORM-PARITY.md`](./PLATFORM-PARITY.md) — iOS-/Platform-Regeln  
+7. [`FILE-INDEX.md`](./FILE-INDEX.md) — alle Kotlin-Dateien  
 
-## Do / don’t
+## Do / Don’t
 
 **Do**
 
-- Match iOS + bookmer-platform for Collection and chrome IA.
-- Prefer small diffs; keep state in `BrowserViewModel`, I/O in `data/*`.
-- Capture tab previews before showing `Overlay.TABS`.
-- Use `bookmerIsDarkTheme()` for theme-dependent UI.
+- Collection und Chrome-IA an iOS + bookmer-platform angleichen.
+- Kleine Diffs; Zustand in `BrowserViewModel`, I/O in `data/*`.
+- Tab-Previews **vor** `Overlay.TABS` erfassen.
+- Theme über `bookmerIsDarkTheme()`.
 
 **Don’t**
 
-- Load marketing bookmer.com as start page.
-- Edit the abandoned `Code/browser/android*` path.
-- Commit `local.properties`, `keystore.properties`, or keystores.
-- Open `Overlay.HISTORY` when the user wants Tab History.
-- Invent Collection layout from scratch.
+- Marketing-bookmer.com als Startseite laden.
+- Den verlassenen Pfad `Code/browser/android*` bearbeiten.
+- `local.properties`, `keystore.properties` oder Keystores committen.
+- Bei Tab History `Overlay.HISTORY` öffnen.
+- Collection-Layout neu erfinden.
 
 ## Build (macOS)
 
@@ -45,38 +45,38 @@ export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 ./gradlew :app:compileDebugKotlin
 ```
 
-## Backup locations
+## Backup-Orte
 
-- Timestamped folders + tarballs: `backups/bookmer-android-YYYYMMDD-HHMMSS/`
-- Each backup includes `BACKUP_MANIFEST.txt`
-- Optional local mirror: `/Users/gabriel/Bookmer/browser-android`
-- Cursor-hosted private copy: see README / save URL after `origin` backup (not public)
+- Zeitstempel-Ordner + Tarballs: `backups/bookmer-android-YYYYMMDD-HHMMSS/`
+- Jedes Backup enthält `BACKUP_MANIFEST.txt`
+- Optional-Mirror: `/Users/gabriel/Bookmer/browser-android`
+- GitHub: https://github.com/0nhub/bookmer-android
 
-## Feature checklist (current product surface)
+## Feature-Checkliste
 
-- [x] Native Collection (4-col, 66dp tiles, wallpaper, sort, view styles)
-- [x] WebView browsing with chrome, find, reader, immersive
-- [x] Nested Collection Folder menu + web Page menu
-- [x] Toolbar scroll hide + swipe-down sticky strip
-- [x] Login sheet + sync pull/push
-- [x] Site permissions (camera/mic/location)
-- [x] Hide elements
-- [x] Alias spoofing
-- [x] History / tab history / downloads / navigate / bookmark tools
-- [x] Widgets, share, QS tiles, deep links
-- [x] Google Play yearly PRO + `/pay/google` registration
-- [ ] Play Console + server env fully production-wired (ops, not code)
+- [x] Native Collection (4 Spalten, 66-dp-Tiles, Wallpaper, Sort, View-Styles)
+- [x] WebView mit Chrome, Suchen, Reader, Immersive
+- [x] Verschachteltes Collection-Folder-Menü + Web-Page-Menü
+- [x] Toolbar Scroll-Hide + Swipe-down Sticky-Strip
+- [x] Login-Sheet + Sync Pull/Push
+- [x] Site-Permissions (Kamera/Mic/Ort)
+- [x] Hide Elements
+- [x] Alias-Spoofing
+- [x] History / Tab History / Downloads / Navigate / Bookmark-Tools
+- [x] Widgets, Share, QS-Tiles, Deep Links
+- [x] Google-Play-Jahres-PRO + `/pay/google`
+- [ ] Play Console + Server-Env produktionsfertig (Ops, nicht Code)
 
-## Contact points for change requests
+## Wo ändern?
 
-| Request type | Start in |
-|--------------|----------|
-| Menu / chrome / gestures | `ui/BrowserChrome.kt` |
-| Collection grid | `ui/CollectionScreen.kt` |
-| Tabs deck | `ui/TabsSwitcherScreen.kt` |
+| Anliegen | Start in |
+|----------|----------|
+| Menü / Chrome / Gesten | `ui/BrowserChrome.kt` |
+| Collection-Grid | `ui/CollectionScreen.kt` |
+| Tabs-Deck | `ui/TabsSwitcherScreen.kt` |
 | Settings | `ui/SettingsScreen.kt` |
-| Browse state | `browser/BrowserViewModel.kt` |
+| Browse-Zustand | `browser/BrowserViewModel.kt` |
 | WebView | `browser/BrowserWebView.kt` |
 | Sync/API | `data/BookmerApiClient.kt` |
 | PRO | `data/BookmerProStore.kt` |
-| Theme fix | `ui/theme/Theme.kt` |
+| Theme | `ui/theme/Theme.kt` |
