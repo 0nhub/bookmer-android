@@ -9,6 +9,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -71,13 +72,17 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -86,9 +91,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -108,6 +115,11 @@ import com.bookmer.browser.data.WebNavigationAction
 
 private val ChromeColor = Color(0xD9111112)
 private val ChromeBorder = Color.White.copy(alpha = .16f)
+
+/** iOS AddressBarField: first focus highlights the whole URL so typing replaces it. */
+internal fun addressFieldValueOnFocus(text: String): TextFieldValue =
+    if (text.isEmpty()) TextFieldValue("")
+    else TextFieldValue(text, TextRange(0, text.length))
 
 /** Custom chrome glyphs not available in Material Icons Extended. */
 private object BookmerChromeIcons {
@@ -184,11 +196,46 @@ fun BrowserChrome(model: BrowserViewModel, modifier: Modifier = Modifier) {
     var newFolder by remember { mutableStateOf(false) }
     var sheet by remember { mutableStateOf<ChromeSheet?>(null) }
     var addressFocused by remember { mutableStateOf(false) }
+    var addressValue by remember { mutableStateOf(TextFieldValue(model.addressText)) }
+    var selectAllOnFocus by remember { mutableStateOf(false) }
+    val addressFocusRequester = remember { FocusRequester() }
+    val addressTapInteraction = remember { MutableInteractionSource() }
     val focus = LocalFocusManager.current
+    val dismissAddressEditing = {
+        addressFocused = false
+        focus.clearFocus()
+        model.cancelEditingAddress()
+        addressValue = TextFieldValue(model.addressText)
+    }
+    val chromeHorizontalInset = if (addressFocused) 6.dp else 16.dp
+    val chromeControlGap = if (addressFocused) 6.dp else 12.dp
+    LaunchedEffect(model.addressText) {
+        if (!addressFocused && addressValue.text != model.addressText) {
+            addressValue = TextFieldValue(model.addressText)
+        }
+    }
+    LaunchedEffect(addressFocused) {
+        if (addressFocused) {
+            addressFocusRequester.requestFocus()
+        }
+    }
+    LaunchedEffect(model.selectedTabId) {
+        menu = false
+        navMenu = false
+        actionMenu = false
+        refreshMenu = false
+        sheet = null
+        if (addressFocused) {
+            dismissAddressEditing()
+        }
+    }
     val dismissMenu = { menu = false }
     val openSheet = { target: ChromeSheet -> menu = false; sheet = target }
     // iOS AddressBarField: centered when idle, left when editing
     val addressCentered = !addressFocused && model.showsCollectionHome
+    val showIdlePageButtons = !addressFocused && !model.showsCollectionHome
+    val showDownloadsChrome = !addressFocused && model.downloads.isNotEmpty()
+    val showAddressLeadingControl = showIdlePageButtons || showDownloadsChrome
 
     val runNavigation = {
         if (model.showsCollectionHome) when (model.settings.startNavigationAction) {
@@ -216,41 +263,49 @@ fun BrowserChrome(model: BrowserViewModel, modifier: Modifier = Modifier) {
     Row(
         modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .padding(horizontal = chromeHorizontalInset, vertical = 10.dp)
             .navigationBarsPadding()
             .imePadding(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(chromeControlGap),
     ) {
-        Box {
-            Box(
-                Modifier.size(50.dp).clip(CircleShape).background(ChromeColor).border(.6.dp, ChromeBorder, CircleShape)
-                    .combinedClickable(onClick = runNavigation, onLongClick = { navMenu = true }),
-                contentAlignment = Alignment.Center,
-            ) {
-                val navIcon = if (model.showsCollectionHome) when (model.settings.startNavigationAction) {
-                    StartNavigationAction.FOLDER_NAVIGATOR -> Icons.Rounded.Menu
-                    StartNavigationAction.TABS -> Icons.Rounded.ContentCopy
-                    StartNavigationAction.TAB_HISTORY -> Icons.Rounded.History
-                } else when (model.settings.webNavigationAction) {
-                    WebNavigationAction.BACK -> Icons.AutoMirrored.Rounded.ArrowBack
-                    WebNavigationAction.NAVIGATE -> Icons.Rounded.Menu
-                    WebNavigationAction.TABS -> Icons.Rounded.ContentCopy
-                    WebNavigationAction.TAB_HISTORY -> Icons.Rounded.History
+        if (!addressFocused) {
+            Box {
+                Box(
+                    Modifier.size(50.dp).clip(CircleShape).background(ChromeColor).border(.6.dp, ChromeBorder, CircleShape)
+                        .combinedClickable(onClick = runNavigation, onLongClick = { navMenu = true }),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val navIcon = if (model.showsCollectionHome) when (model.settings.startNavigationAction) {
+                        StartNavigationAction.FOLDER_NAVIGATOR -> Icons.Rounded.Menu
+                        StartNavigationAction.TABS -> Icons.Rounded.ContentCopy
+                        StartNavigationAction.TAB_HISTORY -> Icons.Rounded.History
+                    } else when (model.settings.webNavigationAction) {
+                        WebNavigationAction.BACK -> Icons.AutoMirrored.Rounded.ArrowBack
+                        WebNavigationAction.NAVIGATE -> Icons.Rounded.Menu
+                        WebNavigationAction.TABS -> Icons.Rounded.ContentCopy
+                        WebNavigationAction.TAB_HISTORY -> Icons.Rounded.History
+                    }
+                    Icon(navIcon, "Navigation", tint = Color.White)
                 }
-                Icon(navIcon, "Navigation", tint = Color.White)
-            }
-            BookmerMenu(expanded = navMenu, onDismissRequest = { navMenu = false }) {
-                BookmerMenuItem("Navigate", { navMenu = false; model.showOverlay(Overlay.NAVIGATE) }, icon = Icons.Rounded.Menu)
-                BookmerMenuItem("Tabs", { navMenu = false; model.showOverlay(Overlay.TABS) }, icon = Icons.Rounded.ContentCopy)
-                BookmerMenuItem("Tab History", { navMenu = false; model.showOverlay(Overlay.TAB_HISTORY) }, icon = Icons.Rounded.History)
-                if (model.canGoForward) {
-                    BookmerMenuItem("Forward", { navMenu = false; model.goForward() }, icon = Icons.Rounded.ArrowForward)
+                BookmerMenu(expanded = navMenu, onDismissRequest = { navMenu = false }) {
+                    BookmerMenuItem("Navigate", { navMenu = false; model.showOverlay(Overlay.NAVIGATE) }, icon = Icons.Rounded.Menu)
+                    BookmerMenuItem("Tabs", { navMenu = false; model.showOverlay(Overlay.TABS) }, icon = Icons.Rounded.ContentCopy)
+                    BookmerMenuItem("Tab History", { navMenu = false; model.showOverlay(Overlay.TAB_HISTORY) }, icon = Icons.Rounded.History)
+                    if (model.canGoForward) {
+                        BookmerMenuItem("Forward", { navMenu = false; model.goForward() }, icon = Icons.Rounded.ArrowForward)
+                    }
                 }
             }
         }
 
         Box(Modifier.weight(1f)) {
+            val capsuleHorizontalPad = when {
+                addressFocused -> 12.dp
+                addressCentered -> 16.dp
+                showAddressLeadingControl -> 2.dp
+                else -> 16.dp
+            }
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -258,15 +313,14 @@ fun BrowserChrome(model: BrowserViewModel, modifier: Modifier = Modifier) {
                     .clip(RoundedCornerShape(25.dp))
                     .background(ChromeColor)
                     .border(.6.dp, ChromeBorder, RoundedCornerShape(25.dp))
-                    .then(addressBarSwipeGestures(model))
+                    .then(if (!addressFocused) addressBarSwipeGestures(model) else Modifier)
                     .padding(
-                        start = if (model.showsCollectionHome) 16.dp else 2.dp,
-                        // Symmetric inset when idle placeholder is centered on the start page
-                        end = if (addressCentered) 16.dp else 2.dp,
+                        start = capsuleHorizontalPad,
+                        end = if (addressFocused || addressCentered) 12.dp else capsuleHorizontalPad,
                     ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (!model.showsCollectionHome) {
+                if (showAddressLeadingControl) {
                     IconButton(
                         onClick = {
                             if (model.downloads.isNotEmpty()) model.showOverlay(Overlay.DOWNLOADS)
@@ -285,45 +339,95 @@ fun BrowserChrome(model: BrowserViewModel, modifier: Modifier = Modifier) {
                         Icon(actionIcon, "Page Action", tint = Color.White.copy(alpha = .68f), modifier = Modifier.size(20.dp))
                     }
                 }
-                BasicTextField(
-                    value = model.addressText,
-                    onValueChange = { model.addressText = it },
-                    modifier = Modifier
+                Box(
+                    Modifier
                         .weight(1f)
-                        .onFocusChanged {
-                            addressFocused = it.isFocused
-                            model.isEditingAddress = it.isFocused
-                        },
-                    singleLine = true,
-                    textStyle = TextStyle(
-                        color = Color.White,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Normal,
-                        textAlign = if (addressCentered) TextAlign.Center else TextAlign.Start,
-                    ),
-                    cursorBrush = SolidColor(Color.White),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                    keyboardActions = KeyboardActions(onGo = { model.submitAddress(); focus.clearFocus() }),
-                    decorationBox = { field ->
-                        Box(
-                            Modifier.fillMaxWidth(),
-                            contentAlignment = if (addressCentered) Alignment.Center else Alignment.CenterStart,
+                        .clickable(
+                            interactionSource = addressTapInteraction,
+                            indication = null,
+                            enabled = !addressFocused,
                         ) {
-                            if (model.addressText.isEmpty()) {
-                                Text(
-                                    if (model.showsCollectionHome) "Search or URL" else model.currentTab.title,
-                                    color = Color.White.copy(alpha = .68f),
-                                    fontSize = 17.sp,
-                                    maxLines = 1,
-                                    textAlign = if (addressCentered) TextAlign.Center else TextAlign.Start,
-                                    modifier = if (addressCentered) Modifier.fillMaxWidth() else Modifier,
-                                )
+                            model.beginEditingAddress()
+                            addressFocused = true
+                            addressValue = TextFieldValue(
+                                model.addressText,
+                                if (model.addressText.isEmpty()) {
+                                    TextRange.Zero
+                                } else {
+                                    TextRange(0, model.addressText.length)
+                                },
+                            )
+                        },
+                ) {
+                    BasicTextField(
+                        value = addressValue,
+                        onValueChange = { next ->
+                            if (selectAllOnFocus && next.text == addressValue.text) {
+                                selectAllOnFocus = false
+                                addressValue = next.copy(selection = TextRange(0, next.text.length))
+                                return@BasicTextField
                             }
-                            field()
-                        }
-                    },
-                )
-                if (!model.showsCollectionHome) {
+                            selectAllOnFocus = false
+                            addressValue = next
+                            if (model.addressText != next.text) {
+                                model.addressText = next.text
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(addressFocusRequester)
+                            .onFocusChanged { state ->
+                                val nowFocused = state.isFocused
+                                if (nowFocused && !addressFocused) {
+                                    model.beginEditingAddress()
+                                    val text = model.addressText.ifEmpty { addressValue.text }
+                                    selectAllOnFocus = text.isNotEmpty()
+                                    addressValue = if (text.isNotEmpty()) {
+                                        addressFieldValueOnFocus(text)
+                                    } else {
+                                        TextFieldValue("")
+                                    }
+                                } else if (!nowFocused && addressFocused) {
+                                    model.cancelEditingAddress()
+                                    addressValue = TextFieldValue(model.addressText)
+                                }
+                                addressFocused = nowFocused
+                            },
+                        readOnly = !addressFocused,
+                        singleLine = true,
+                        textStyle = TextStyle(
+                            color = Color.White,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Normal,
+                            textAlign = if (addressCentered) TextAlign.Center else TextAlign.Start,
+                        ),
+                        cursorBrush = SolidColor(Color.White),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                        keyboardActions = KeyboardActions(onGo = {
+                            model.submitAddress()
+                            focus.clearFocus()
+                        }),
+                        decorationBox = { field ->
+                            Box(
+                                Modifier.fillMaxWidth(),
+                                contentAlignment = if (addressCentered) Alignment.Center else Alignment.CenterStart,
+                            ) {
+                                if (model.addressText.isEmpty()) {
+                                    Text(
+                                        if (model.showsCollectionHome) "Search or URL" else model.currentTab.title,
+                                        color = Color.White.copy(alpha = .68f),
+                                        fontSize = 17.sp,
+                                        maxLines = 1,
+                                        textAlign = if (addressCentered) TextAlign.Center else TextAlign.Start,
+                                        modifier = if (addressCentered) Modifier.fillMaxWidth() else Modifier,
+                                    )
+                                }
+                                field()
+                            }
+                        },
+                    )
+                }
+                if (showIdlePageButtons) {
                     Box {
                         Box(
                             Modifier
@@ -366,8 +470,18 @@ fun BrowserChrome(model: BrowserViewModel, modifier: Modifier = Modifier) {
                             }
                         }
                     }
-                } else if (model.addressText.isNotEmpty()) {
+                } else if (model.showsCollectionHome && model.addressText.isNotEmpty() && !addressFocused) {
                     IconButton(onClick = { model.addressText = "" }, modifier = Modifier.size(44.dp)) {
+                        Icon(Icons.Rounded.Close, "Clear", tint = Color.White, modifier = Modifier.size(20.dp))
+                    }
+                } else if (addressFocused && model.addressText.isNotEmpty()) {
+                    IconButton(
+                        onClick = {
+                            model.addressText = ""
+                            addressValue = TextFieldValue("")
+                        },
+                        modifier = Modifier.size(44.dp),
+                    ) {
                         Icon(Icons.Rounded.Close, "Clear", tint = Color.White, modifier = Modifier.size(20.dp))
                     }
                 }
@@ -382,24 +496,38 @@ fun BrowserChrome(model: BrowserViewModel, modifier: Modifier = Modifier) {
         }
 
         Box {
-            IconButton(
-                onClick = { menu = true },
-                modifier = Modifier.size(50.dp).clip(CircleShape).background(ChromeColor).border(.6.dp, ChromeBorder, CircleShape),
-            ) {
-                Icon(Icons.Rounded.MoreHoriz, "Menu", tint = Color.White)
+            if (addressFocused) {
+                IconButton(
+                    onClick = dismissAddressEditing,
+                    modifier = Modifier.size(50.dp).clip(CircleShape).background(ChromeColor).border(.6.dp, ChromeBorder, CircleShape),
+                ) {
+                    Icon(Icons.Rounded.Close, "Close search", tint = Color.White)
+                }
+            } else {
+                IconButton(
+                    onClick = { menu = true },
+                    modifier = Modifier.size(50.dp).clip(CircleShape).background(ChromeColor).border(.6.dp, ChromeBorder, CircleShape),
+                ) {
+                    Icon(Icons.Rounded.MoreHoriz, "Menu", tint = Color.White)
+                }
             }
             // Root menus stay stable — never swap menu children while open (ANR).
+            key(model.selectedTabId) {
             BookmerMenu(expanded = menu, onDismissRequest = dismissMenu) {
                 if (model.showsCollectionHome) {
                     BookmerMenuItem("Settings", { dismissMenu(); model.showOverlay(Overlay.SETTINGS) }, icon = Icons.Rounded.Settings)
-                    BookmerMenuItem("Clear Data", { dismissMenu(); clearData = true }, icon = Icons.Rounded.Delete, danger = true)
+                    BookmerMenuItem("Clear Data", { dismissMenu(); clearData = true }, icon = Icons.Rounded.Delete)
                     BookmerMenuDivider()
                     BookmerMenuItem("Folder", { openSheet(ChromeSheet.FOLDER) }, icon = Icons.Rounded.Folder, showsChevron = true)
                     if (model.session.value.isSignedIn) {
                         BookmerMenuItem("Bookmarks", { openSheet(ChromeSheet.BOOKMARKS) }, icon = Icons.Rounded.Star, showsChevron = true)
                     }
                     BookmerMenuDivider()
-                    BookmerMenuItem("New Tab", { dismissMenu(); model.createTab() }, icon = Icons.Rounded.Add)
+                    BookmerMenuItem("New Tab", {
+                        menu = false
+                        sheet = null
+                        model.createTab()
+                    }, icon = Icons.Rounded.Add)
                 } else {
                     val hasPage = !model.currentTab.url.isNullOrBlank()
                     val hasHides = model.hiddenElements.hasRulesMatching(model.currentTab.url)
@@ -447,8 +575,13 @@ fun BrowserChrome(model: BrowserViewModel, modifier: Modifier = Modifier) {
                         enabled = hasPage,
                     )
                     BookmerMenuDivider()
-                    BookmerMenuItem("New Tab", { dismissMenu(); model.createTab() }, icon = Icons.Rounded.Add)
+                    BookmerMenuItem("New Tab", {
+                        menu = false
+                        sheet = null
+                        model.createTab()
+                    }, icon = Icons.Rounded.Add)
                 }
+            }
             }
             OverflowSubmenus(
                 model = model,
@@ -563,11 +696,7 @@ private fun PermissionSubmenu(
 }
 
 /**
- * Address-bar gestures (iOS parity):
- * - swipe up → Tabs
- * - swipe down → sticky minimize (Hide Toolbar, web pages only)
- * - swipe left → next tab (or new tab on the last one)
- * - swipe right → previous tab
+ * Address-bar swipe gestures (iOS parity). Keep separate from tap-to-focus (clickable on field).
  */
 private fun addressBarSwipeGestures(model: BrowserViewModel): Modifier {
     return Modifier.pointerInput(model.selectedTabId, model.settings.hideToolbar, model.showsCollectionHome) {

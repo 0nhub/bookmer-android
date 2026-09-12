@@ -211,6 +211,9 @@ enum class SearchEngine(val label: String, val template: String) {
     YANDEX("Yandex", "https://yandex.com/search/?text=@@@");
 
     fun url(query: String) = template.replace("@@@", Uri.encode(query))
+
+    /** Same host icons as Collection bookmarks (`/iconscollection/{host}`). */
+    fun iconUrl(): String? = BookmerItem.iconFor(template.replace("@@@", "q"))
 }
 
 data class CustomSearchEngine(val id: String = UUID.randomUUID().toString(), val name: String, val template: String) {

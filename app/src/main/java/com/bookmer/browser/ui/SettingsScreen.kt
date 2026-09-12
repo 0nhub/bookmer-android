@@ -3,7 +3,16 @@ package com.bookmer.browser.ui
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,6 +31,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -48,6 +58,7 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.Public
@@ -90,12 +101,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.border
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bookmer.browser.browser.BrowserViewModel
@@ -126,14 +142,36 @@ private enum class SettingsPage(val title: String) {
     METADATA_LOCATION("Location"), METADATA_LANGUAGE("Language"), METADATA_TIMEZONE("Time Zone"),
     COOKIES("Cookies"), BLOCKED_SITES("Websites"),
     HIDDEN_ELEMENTS("Hidden Elements"), CLOSE_TABS("Close Tabs"), SEARCH_ENGINE("Search Engine"),
-    TRANSLATE("Translate"), WALLPAPER("Wallpaper"), THEME("Theme"), TOOLBAR("Toolbar"),
+    TRANSLATE("Translate"), WALLPAPER("Wallpaper"), WALLPAPER_PICK("Choose Wallpaper"), THEME("Theme"), TOOLBAR("Toolbar"),
     TOOLBAR_START_PAGE("Start Page"), TOOLBAR_ON_WEBSITES("On Websites"),
     TOOLBAR_AUTO_REFRESH("Auto Refresh"), TOOLBAR_ADD_REFRESH("Add Interval"),
     WIDGETS("Widgets"), CONTROL_CENTER("Control Center"),
 }
 
-private val SettingsCardShape = RoundedCornerShape(26.dp)
+private val SettingsCardShape = RoundedCornerShape(SettingsLayout.cardRadius)
 private val IconWellShape = CircleShape
+private const val SettingsNavMillis = 320
+
+/** Compact settings density (closer to iOS Settings than oversized cards). */
+private object SettingsLayout {
+    val cardRadius = 14.dp
+    val sectionSpacing = 10.dp
+    val listHorizontal = 16.dp
+    val rowHorizontal = 14.dp
+    val rowVertical = 10.dp
+    val toggleRowVertical = 7.dp
+    val checkRowVertical = 11.dp
+    val iconWell = 32.dp
+    val iconGlyph = 18.dp
+    val toggleIconWell = 28.dp
+    val toggleIconGlyph = 16.dp
+    val chevron = 16.dp
+    val rowIconGap = 12.dp
+    val dividerInset = 58.dp
+    val heroPad = 14.dp
+    val heroAvatar = 44.dp
+    val heroIcon = 24.dp
+}
 
 private object SettingsAccent {
     val blue = Color(0xFF2F6BFF)
@@ -156,59 +194,169 @@ private fun settingsCard(): Color =
     if (bookmerIsDarkTheme()) Color(0xFF1C1C1E) else Color.White
 
 @Composable
+private fun rememberSettingsScrollStates(): Map<SettingsPage, LazyListState> = remember {
+    SettingsPage.entries.associateWith { LazyListState() }
+}
+
+@Composable
 fun SettingsScreen(model: BrowserViewModel) {
     var stack by remember { mutableStateOf(listOf(SettingsPage.ROOT)) }
-    val page = stack.last()
+    val scrollStates = rememberSettingsScrollStates()
+    val rootListState = scrollStates.getValue(SettingsPage.ROOT)
+    var rootScrollIndex by remember { mutableIntStateOf(0) }
+    var rootScrollOffset by remember { mutableIntStateOf(0) }
+    val popPage: () -> Unit = {
+        if (stack.size > 1) {
+            stack = stack.dropLast(1)
+        } else {
+            model.dismissOverlay()
+        }
+    }
+    val openPage: (SettingsPage) -> Unit = { next ->
+        if (stack.last() == SettingsPage.ROOT) {
+            rootScrollIndex = rootListState.firstVisibleItemIndex
+            rootScrollOffset = rootListState.firstVisibleItemScrollOffset
+        }
+        stack = stack + next
+    }
+    var previousStackSize by remember { mutableIntStateOf(1) }
+    LaunchedEffect(stack) {
+        val size = stack.size
+        if (stack.last() == SettingsPage.ROOT && size < previousStackSize) {
+            rootListState.scrollToItem(rootScrollIndex, rootScrollOffset)
+        }
+        previousStackSize = size
+    }
+    BackHandler(onBack = popPage)
     val canvas = settingsCanvas()
+    val navSlideSpec = tween<IntOffset>(durationMillis = SettingsNavMillis, easing = FastOutSlowInEasing)
+    val navFadeSpec = tween<Float>(durationMillis = SettingsNavMillis, easing = FastOutSlowInEasing)
     Surface(Modifier.fillMaxSize(), color = canvas) {
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            if (page == SettingsPage.ROOT) {
-                SettingsRootChrome(onClose = model::dismissOverlay)
-            } else {
-                SettingsDetailHeader(page.title) { stack = stack.dropLast(1) }
-            }
+        SettingsStackPage(
+            stack = stack,
+            model = model,
+            scrollStates = scrollStates,
+            canvas = canvas,
+            openPage = openPage,
+            popPage = popPage,
+            onCloseSettings = model::dismissOverlay,
+            navSlideSpec = navSlideSpec,
+            navFadeSpec = navFadeSpec,
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding(),
+        )
+    }
+}
+
+@Composable
+private fun SettingsStackPage(
+    stack: List<SettingsPage>,
+    model: BrowserViewModel,
+    scrollStates: Map<SettingsPage, LazyListState>,
+    canvas: Color,
+    openPage: (SettingsPage) -> Unit,
+    popPage: () -> Unit,
+    onCloseSettings: () -> Unit,
+    navSlideSpec: androidx.compose.animation.core.TweenSpec<IntOffset>,
+    navFadeSpec: androidx.compose.animation.core.TweenSpec<Float>,
+    modifier: Modifier = Modifier,
+) {
+    val page = stack.last()
+    if (page == SettingsPage.ROOT) {
+        SettingsRoot(
+            model = model,
+            open = openPage,
+            listState = scrollStates.getValue(SettingsPage.ROOT),
+            onClose = onCloseSettings,
+            modifier = modifier,
+        )
+    } else {
+        Column(modifier) {
+            SettingsDetailHeader(page.title, onBack = popPage)
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                when (page) {
-                    SettingsPage.ROOT -> SettingsRoot(model) { stack = stack + it }
-                    SettingsPage.ACCOUNT -> AccountSettings(model) { stack = stack + it }
-                    SettingsPage.SUBSCRIPTION -> SubscriptionSettings(model)
-                    SettingsPage.METADATA -> MetadataSettings(model) { stack = stack + it }
-                    SettingsPage.METADATA_OS -> MetadataOsPage(model)
-                    SettingsPage.METADATA_COUNTRY -> MetadataCatalogPage(
-                        items = AliasStore.countries,
-                        selectedCode = model.alias.countryCode,
-                        onSelect = { model.alias.chooseCountry(it); model.destroyWebViews() },
-                    )
-                    SettingsPage.METADATA_LOCATION -> MetadataLocationPage(model)
-                    SettingsPage.METADATA_LANGUAGE -> MetadataCatalogPage(
-                        items = AliasStore.languages,
-                        selectedCode = model.alias.languageCode,
-                        onSelect = { model.alias.chooseLanguage(it); model.destroyWebViews() },
-                    )
-                    SettingsPage.METADATA_TIMEZONE -> MetadataCatalogPage(
-                        items = AliasStore.timeZones,
-                        selectedCode = model.alias.timeZoneIdentifier,
-                        onSelect = { model.alias.chooseTimeZone(it); model.destroyWebViews() },
-                    )
-                    SettingsPage.COOKIES -> CookieSettings(model)
-                    SettingsPage.BLOCKED_SITES -> BlockedSitesSettings(model)
-                    SettingsPage.HIDDEN_ELEMENTS -> Box(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-                        HiddenElementsSettings(model)
+            AnimatedContent(
+                targetState = stack,
+                modifier = Modifier.fillMaxSize(),
+                transitionSpec = {
+                    val forward = targetState.size > initialState.size
+                    if (forward) {
+                        (slideInHorizontally(navSlideSpec) { width -> width } + fadeIn(navFadeSpec)) togetherWith
+                            (slideOutHorizontally(navSlideSpec) { width -> -width / 4 } + fadeOut(navFadeSpec))
+                    } else {
+                        (slideInHorizontally(navSlideSpec) { width -> -width / 4 } + fadeIn(navFadeSpec)) togetherWith
+                            (slideOutHorizontally(navSlideSpec) { width -> width } + fadeOut(navFadeSpec))
                     }
-                    SettingsPage.CLOSE_TABS -> CloseTabsSettings(model)
-                    SettingsPage.SEARCH_ENGINE -> SearchEngineSettings(model)
-                    SettingsPage.TRANSLATE -> TranslateSettings(model)
-                    SettingsPage.WALLPAPER -> WallpaperSettings(model)
-                    SettingsPage.THEME -> ThemeSettings(model)
-                    SettingsPage.TOOLBAR -> ToolbarSettings(model) { stack = stack + it }
-                    SettingsPage.TOOLBAR_START_PAGE -> ToolbarStartPageSettings(model)
-                    SettingsPage.TOOLBAR_ON_WEBSITES -> ToolbarOnWebsitesSettings(model)
-                    SettingsPage.TOOLBAR_AUTO_REFRESH -> ToolbarAutoRefreshSettings(model) { stack = stack + it }
-                    SettingsPage.TOOLBAR_ADD_REFRESH -> ToolbarAddRefreshInterval(model) { stack = stack.dropLast(1) }
-                    SettingsPage.WIDGETS, SettingsPage.CONTROL_CENTER -> ShortcutEditor(model, page)
+                },
+                label = "settingsDetailNavigation",
+            ) { currentStack ->
+                val detailPage = currentStack.last()
+                Box(Modifier.fillMaxSize().background(canvas)) {
+                    SettingsDetailPage(
+                        page = detailPage,
+                        model = model,
+                        scrollStates = scrollStates,
+                        openPage = openPage,
+                        popPage = popPage,
+                    )
                 }
             }
+            }
         }
+    }
+}
+
+@Composable
+private fun SettingsDetailPage(
+    page: SettingsPage,
+    model: BrowserViewModel,
+    scrollStates: Map<SettingsPage, LazyListState>,
+    openPage: (SettingsPage) -> Unit,
+    popPage: () -> Unit,
+) {
+    val listState = scrollStates.getValue(page)
+    when (page) {
+        SettingsPage.ROOT -> Unit
+        SettingsPage.ACCOUNT -> AccountSettings(model, openPage, listState)
+        SettingsPage.SUBSCRIPTION -> SubscriptionSettings(model, listState)
+        SettingsPage.METADATA -> MetadataSettings(model, openPage, listState)
+        SettingsPage.METADATA_OS -> MetadataOsPage(model, listState)
+        SettingsPage.METADATA_COUNTRY -> MetadataCatalogPage(
+            listState = scrollStates.getValue(SettingsPage.METADATA_COUNTRY),
+            items = AliasStore.countries,
+            selectedCode = model.alias.countryCode,
+            onSelect = { model.alias.chooseCountry(it); model.destroyWebViews() },
+        )
+        SettingsPage.METADATA_LOCATION -> MetadataLocationPage(model, listState)
+        SettingsPage.METADATA_LANGUAGE -> MetadataCatalogPage(
+            listState = scrollStates.getValue(SettingsPage.METADATA_LANGUAGE),
+            items = AliasStore.languages,
+            selectedCode = model.alias.languageCode,
+            onSelect = { model.alias.chooseLanguage(it); model.destroyWebViews() },
+        )
+        SettingsPage.METADATA_TIMEZONE -> MetadataCatalogPage(
+            listState = scrollStates.getValue(SettingsPage.METADATA_TIMEZONE),
+            items = AliasStore.timeZones,
+            selectedCode = model.alias.timeZoneIdentifier,
+            onSelect = { model.alias.chooseTimeZone(it); model.destroyWebViews() },
+        )
+        SettingsPage.COOKIES -> CookieSettings(model, listState)
+        SettingsPage.BLOCKED_SITES -> BlockedSitesSettings(model, listState)
+        SettingsPage.HIDDEN_ELEMENTS -> Box(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+            HiddenElementsSettings(model)
+        }
+        SettingsPage.CLOSE_TABS -> CloseTabsSettings(model, listState)
+        SettingsPage.SEARCH_ENGINE -> SearchEngineSettings(model, listState)
+        SettingsPage.TRANSLATE -> TranslateSettings(model, listState)
+        SettingsPage.WALLPAPER -> WallpaperSettings(model, openPage, listState)
+        SettingsPage.WALLPAPER_PICK -> WallpaperPickSettings(model, listState)
+        SettingsPage.THEME -> ThemeSettings(model, listState)
+        SettingsPage.TOOLBAR -> ToolbarSettings(model, openPage, listState)
+        SettingsPage.TOOLBAR_START_PAGE -> ToolbarStartPageSettings(model, listState)
+        SettingsPage.TOOLBAR_ON_WEBSITES -> ToolbarOnWebsitesSettings(model, listState)
+        SettingsPage.TOOLBAR_AUTO_REFRESH -> ToolbarAutoRefreshSettings(model, openPage, listState)
+        SettingsPage.TOOLBAR_ADD_REFRESH -> ToolbarAddRefreshInterval(model, popPage, listState)
+        SettingsPage.WIDGETS, SettingsPage.CONTROL_CENTER -> ShortcutEditor(model, page, listState)
     }
 }
 
@@ -222,11 +370,10 @@ private fun SettingsRootChrome(onClose: () -> Unit) {
             "Settings",
             Modifier
                 .align(Alignment.Center)
-                .padding(vertical = 28.dp),
-            style = MaterialTheme.typography.headlineMedium,
+                .padding(vertical = 14.dp),
+            style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
-            fontSize = 34.sp,
-            letterSpacing = (-0.5).sp,
+            letterSpacing = (-0.3).sp,
         )
     }
 }
@@ -242,23 +389,47 @@ private fun SettingsDetailHeader(title: String, onBack: () -> Unit) {
         IconButton(onClick = onBack) {
             Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back")
         }
-        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
     }
 }
 
 @Composable
-private fun SettingsRoot(model: BrowserViewModel, open: (SettingsPage) -> Unit) {
+private fun SettingsRoot(
+    model: BrowserViewModel,
+    open: (SettingsPage) -> Unit,
+    listState: LazyListState,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
     var clearData by remember { mutableStateOf(false) }
+    val prefs = model.preferences.settings
 
-    LazyColumn(
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        item { AccountHeroCard(model) { open(SettingsPage.ACCOUNT) } }
+    Column(modifier.fillMaxSize()) {
+        SettingsRootChrome(onClose = onClose)
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            overscrollEffect = null,
+            contentPadding = PaddingValues(
+                start = SettingsLayout.listHorizontal,
+                end = SettingsLayout.listHorizontal,
+                bottom = 28.dp,
+            ),
+        ) {
+        item(key = "account") {
+            SettingsListSection {
+                AccountHeroCard(model) { open(SettingsPage.ACCOUNT) }
+            }
+        }
 
-        item { SectionLabel("Browser Data") }
-        item {
+        item(key = "browser-data-label") {
+            SettingsListSection { SectionLabel("Browser Data") }
+        }
+        item(key = "browser-data") {
+            SettingsListSection {
             SettingsModuleCard {
                 SettingsModuleRow("Metadata", Icons.Rounded.Description, SettingsAccent.teal) {
                     open(SettingsPage.METADATA)
@@ -277,34 +448,42 @@ private fun SettingsRoot(model: BrowserViewModel, open: (SettingsPage) -> Unit) 
                     showDivider = false,
                 ) { clearData = true }
             }
+            }
         }
 
-        item { SectionLabel("Blocker") }
-        item {
+        item(key = "blocker-label") {
+            SettingsListSection { SectionLabel("Blocker") }
+        }
+        item(key = "blocker") {
+            SettingsListSection {
             SettingsModuleCard {
-                ToggleModuleRow("Cookies", Icons.Rounded.Cookie, SettingsAccent.orange, model.settings.blockCookies) { value ->
+                ToggleModuleRow("Cookies", Icons.Rounded.Cookie, SettingsAccent.orange, prefs.blockCookies) { value ->
                     model.preferences.update { it.copy(blockCookies = value) }; model.destroyWebViews()
                 }
-                ToggleModuleRow("Trackers", Icons.Rounded.Security, SettingsAccent.red, model.settings.blockTrackers) { value ->
+                ToggleModuleRow("Trackers", Icons.Rounded.Security, SettingsAccent.red, prefs.blockTrackers) { value ->
                     model.preferences.update { it.copy(blockTrackers = value) }; model.destroyWebViews()
                 }
-                ToggleModuleRow("Popups", Icons.Rounded.Block, SettingsAccent.purple, model.settings.blockPopups) { value ->
+                ToggleModuleRow("Popups", Icons.Rounded.Block, SettingsAccent.purple, prefs.blockPopups) { value ->
                     model.preferences.update { it.copy(blockPopups = value) }; model.destroyWebViews()
                 }
-                ToggleModuleRow("App Banners", Icons.Rounded.Smartphone, SettingsAccent.blue, model.settings.blockAppBanners) { value ->
+                ToggleModuleRow("App Banners", Icons.Rounded.Smartphone, SettingsAccent.blue, prefs.blockAppBanners) { value ->
                     model.preferences.update { it.copy(blockAppBanners = value) }
                 }
-                ToggleModuleRow("YouTube Ads", Icons.Rounded.BrokenImage, SettingsAccent.red, model.settings.blockYouTubeAds) { value ->
+                ToggleModuleRow("YouTube Ads", Icons.Rounded.BrokenImage, SettingsAccent.red, prefs.blockYouTubeAds) { value ->
                     model.preferences.update { it.copy(blockYouTubeAds = value) }
                 }
                 SettingsModuleRow("Websites", Icons.Rounded.Description, SettingsAccent.teal, showDivider = false) {
                     open(SettingsPage.BLOCKED_SITES)
                 }
             }
+            }
         }
 
-        item { SectionLabel("Browsing") }
-        item {
+        item(key = "browsing-label") {
+            SettingsListSection { SectionLabel("Browsing") }
+        }
+        item(key = "browsing") {
+            SettingsListSection {
             SettingsModuleCard {
                 SettingsModuleRow("Hidden Elements", Icons.Rounded.VisibilityOff, SettingsAccent.purple) {
                     open(SettingsPage.HIDDEN_ELEMENTS)
@@ -319,10 +498,14 @@ private fun SettingsRoot(model: BrowserViewModel, open: (SettingsPage) -> Unit) 
                     open(SettingsPage.TRANSLATE)
                 }
             }
+            }
         }
 
-        item { SectionLabel("Appearance") }
-        item {
+        item(key = "appearance-label") {
+            SettingsListSection { SectionLabel("Appearance") }
+        }
+        item(key = "appearance") {
+            SettingsListSection {
             SettingsModuleCard {
                 SettingsModuleRow("Wallpaper", Icons.Rounded.Wallpaper, SettingsAccent.purple) {
                     open(SettingsPage.WALLPAPER)
@@ -334,10 +517,14 @@ private fun SettingsRoot(model: BrowserViewModel, open: (SettingsPage) -> Unit) 
                     open(SettingsPage.TOOLBAR)
                 }
             }
+            }
         }
 
-        item { SectionLabel("Shortcuts") }
-        item {
+        item(key = "shortcuts-label") {
+            SettingsListSection { SectionLabel("Shortcuts") }
+        }
+        item(key = "shortcuts") {
+            SettingsListSection {
             SettingsModuleCard {
                 SettingsModuleRow("Widgets", Icons.Rounded.Widgets, SettingsAccent.indigo) {
                     open(SettingsPage.WIDGETS)
@@ -346,9 +533,11 @@ private fun SettingsRoot(model: BrowserViewModel, open: (SettingsPage) -> Unit) 
                     open(SettingsPage.CONTROL_CENTER)
                 }
             }
+            }
         }
 
-        item {
+        item(key = "system") {
+            SettingsListSection {
             SettingsModuleCard {
                 SettingsModuleRow("Android Settings", Icons.Rounded.PhoneAndroid, SettingsAccent.gray, external = true) {
                     context.startActivity(
@@ -366,6 +555,8 @@ private fun SettingsRoot(model: BrowserViewModel, open: (SettingsPage) -> Unit) 
                     model.dismissOverlay()
                 }
             }
+            }
+        }
         }
     }
 
@@ -389,42 +580,45 @@ private fun AccountHeroCard(model: BrowserViewModel, onClick: () -> Unit) {
     } else {
         "Sync your Collection across devices"
     }
-    Surface(
-        onClick = onClick,
-        shape = SettingsCardShape,
-        color = settingsCard(),
-        modifier = Modifier.fillMaxWidth(),
+    val cardColor = settingsCard()
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(SettingsCardShape)
+            .background(cardColor)
+            .clickable(onClick = onClick)
+            .padding(
+                horizontal = SettingsLayout.heroPad,
+                vertical = SettingsLayout.heroPad,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
             Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(4.dp))
-                Text(subtitle, color = SettingsAccent.blueSoft, style = MaterialTheme.typography.bodyMedium)
+                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(2.dp))
+                Text(subtitle, color = SettingsAccent.blueSoft, style = MaterialTheme.typography.bodySmall)
             }
             Box(
                 Modifier
-                    .size(52.dp)
+                    .size(SettingsLayout.heroAvatar)
                     .clip(CircleShape)
                     .background(SettingsAccent.blueSoft.copy(alpha = 0.22f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Rounded.Person, null, Modifier.size(30.dp), tint = SettingsAccent.blueSoft)
+                Icon(Icons.Rounded.Person, null, Modifier.size(SettingsLayout.heroIcon), tint = SettingsAccent.blueSoft)
             }
-        }
     }
 }
 
 @Composable
 private fun SettingsModuleCard(content: @Composable () -> Unit) {
-    Surface(
-        shape = SettingsCardShape,
-        color = settingsCard(),
-        modifier = Modifier.fillMaxWidth(),
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(SettingsCardShape)
+            .background(settingsCard()),
     ) {
-        Column { content() }
+        content()
     }
 }
 
@@ -439,6 +633,10 @@ private fun SettingsModuleRow(
     danger: Boolean = false,
     showDivider: Boolean = true,
     showChevron: Boolean = true,
+    iconWell: Dp = SettingsLayout.iconWell,
+    iconGlyph: Dp = SettingsLayout.iconGlyph,
+    rowVertical: Dp = SettingsLayout.rowVertical,
+    dividerInset: Dp = SettingsLayout.dividerInset,
     trailing: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
 ) {
@@ -448,21 +646,24 @@ private fun SettingsModuleRow(
             Modifier
                 .fillMaxWidth()
                 .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .padding(
+                    horizontal = SettingsLayout.rowHorizontal,
+                    vertical = rowVertical,
+                ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 Modifier
-                    .size(40.dp)
+                    .size(iconWell)
                     .clip(IconWellShape)
                     .background(accent),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(icon, null, Modifier.size(22.dp), tint = Color.White)
+                Icon(icon, null, Modifier.size(iconGlyph), tint = Color.White)
             }
-            Spacer(Modifier.width(14.dp))
+            Spacer(Modifier.width(SettingsLayout.rowIconGap))
             Column(Modifier.weight(1f)) {
-                Text(title, color = titleColor, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                Text(title, color = titleColor, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                 if (!subtitle.isNullOrBlank()) {
                     Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
@@ -480,11 +681,11 @@ private fun SettingsModuleRow(
                         )
                     }
                     when {
-                        external -> Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        external -> Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, Modifier.size(SettingsLayout.chevron), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         showChevron && onClick != null -> Icon(
                             Icons.Rounded.ChevronRight,
                             null,
-                            Modifier.size(18.dp),
+                            Modifier.size(SettingsLayout.chevron),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -493,7 +694,7 @@ private fun SettingsModuleRow(
         }
         if (showDivider) {
             HorizontalDivider(
-                Modifier.padding(start = 70.dp),
+                Modifier.padding(start = dividerInset),
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
             )
         }
@@ -501,34 +702,69 @@ private fun SettingsModuleRow(
 }
 
 @Composable
-private fun SettingsScroll(content: LazyListScope.() -> Unit) {
+private fun SettingsCompactSwitch(
+    checked: Boolean,
+    onCheckedChange: ((Boolean) -> Unit)?,
+) {
+    Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        modifier = Modifier
+            .scale(0.78f)
+            .padding(end = 2.dp),
+    )
+}
+
+@Composable
+private fun SettingsListSection(content: @Composable () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(bottom = SettingsLayout.sectionSpacing)) {
+        content()
+    }
+}
+
+@Composable
+private fun SettingsScroll(
+    listState: LazyListState,
+    content: LazyListScope.() -> Unit,
+) {
     LazyColumn(
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        state = listState,
+        modifier = Modifier.fillMaxSize(),
+        overscrollEffect = null,
+        contentPadding = PaddingValues(
+            start = SettingsLayout.listHorizontal,
+            end = SettingsLayout.listHorizontal,
+            top = 4.dp,
+            bottom = 28.dp,
+        ),
         content = content,
     )
 }
 
 @Composable
-private fun AccountSettings(model: BrowserViewModel, open: (SettingsPage) -> Unit) {
+private fun AccountSettings(model: BrowserViewModel, open: (SettingsPage) -> Unit, listState: LazyListState) {
     val signedIn = model.session.value.isSignedIn
     var logout by remember { mutableStateOf(false) }
-    SettingsScroll {
+    SettingsScroll(listState) {
         if (!signedIn) {
             item {
                 SettingsModuleCard {
                     Column(
-                        Modifier.fillMaxWidth().padding(22.dp),
+                        Modifier.fillMaxWidth().padding(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         Box(
-                            Modifier.size(72.dp).clip(CircleShape).background(SettingsAccent.blueSoft.copy(alpha = 0.22f)),
+                            Modifier.size(56.dp).clip(CircleShape).background(SettingsAccent.blueSoft.copy(alpha = 0.22f)),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Icon(Icons.Rounded.Person, null, Modifier.size(40.dp), tint = SettingsAccent.blueSoft)
+                            Icon(Icons.Rounded.Person, null, Modifier.size(30.dp), tint = SettingsAccent.blueSoft)
                         }
-                        Text("Sign in to sync your Collection across devices.", textAlign = TextAlign.Center)
+                        Text(
+                            "Sign in to sync your Collection across devices.",
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                         Button(onClick = {
                             model.dismissOverlay()
                             model.presentLogin()
@@ -542,13 +778,17 @@ private fun AccountSettings(model: BrowserViewModel, open: (SettingsPage) -> Uni
             item {
                 SettingsModuleCard {
                     Column(
-                        Modifier.fillMaxWidth().padding(22.dp),
+                        Modifier.fillMaxWidth().padding(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Icon(Icons.Rounded.AccountCircle, null, Modifier.size(72.dp), tint = SettingsAccent.blueSoft)
-                        Spacer(Modifier.height(8.dp))
-                        Text(model.session.value.name ?: "Bookmer", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                        Text(model.session.value.email.orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(Icons.Rounded.AccountCircle, null, Modifier.size(56.dp), tint = SettingsAccent.blueSoft)
+                        Spacer(Modifier.height(6.dp))
+                        Text(model.session.value.name ?: "Bookmer", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            model.session.value.email.orEmpty(),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                     }
                 }
             }
@@ -594,7 +834,7 @@ private fun AccountSettings(model: BrowserViewModel, open: (SettingsPage) -> Uni
 }
 
 @Composable
-private fun SubscriptionSettings(model: BrowserViewModel) {
+private fun SubscriptionSettings(model: BrowserViewModel, listState: LazyListState) {
     val context = LocalContext.current
     val activity = context as? android.app.Activity
     val pro = model.pro
@@ -606,16 +846,16 @@ private fun SubscriptionSettings(model: BrowserViewModel) {
         pro.refreshEntitlement(syncAccount = true)
         model.refreshProfile()
     }
-    SettingsScroll {
+    SettingsScroll(listState) {
         item {
             SettingsModuleCard {
                 Column(
-                    Modifier.fillMaxWidth().padding(24.dp),
+                    Modifier.fillMaxWidth().padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Box(
-                        Modifier.size(64.dp).clip(CircleShape).background(SettingsAccent.orange),
+                        Modifier.size(52.dp).clip(CircleShape).background(SettingsAccent.orange),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(Icons.Rounded.Star, null, tint = Color.White)
@@ -671,7 +911,7 @@ private fun SubscriptionSettings(model: BrowserViewModel) {
                 SettingsModuleCard {
                     Button(
                         onClick = { activity?.let(pro::purchase) },
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                        Modifier.fillMaxWidth().padding(horizontal = SettingsLayout.rowHorizontal, vertical = SettingsLayout.rowVertical),
                         enabled = !pro.isPurchasing && signedIn,
                         shape = RoundedCornerShape(14.dp),
                     ) {
@@ -731,9 +971,9 @@ private fun formatSubscriptionDate(ms: Long): String =
     java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(ms))
 
 @Composable
-private fun MetadataSettings(model: BrowserViewModel, open: (SettingsPage) -> Unit) {
+private fun MetadataSettings(model: BrowserViewModel, open: (SettingsPage) -> Unit, listState: LazyListState) {
     val alias = model.alias
-    SettingsScroll {
+    SettingsScroll(listState) {
         item {
             ExplanatoryCard("Websites see these values instead of your real device. Default sends what this phone actually is.")
         }
@@ -752,28 +992,38 @@ private fun MetadataSettings(model: BrowserViewModel, open: (SettingsPage) -> Un
 }
 
 @Composable
-private fun MetadataValueRow(title: String, value: String, showDivider: Boolean = true, onClick: () -> Unit) {
+private fun MetadataValueRow(
+    title: String,
+    value: String? = null,
+    showDivider: Boolean = true,
+    onClick: () -> Unit,
+) {
     Column {
         Row(
             Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onClick)
-                .padding(horizontal = 18.dp, vertical = 15.dp),
+                .padding(
+                    horizontal = SettingsLayout.rowHorizontal,
+                    vertical = SettingsLayout.checkRowVertical,
+                ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-            Text(
-                value,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                modifier = Modifier.padding(end = 6.dp),
-            )
-            Icon(Icons.Rounded.ChevronRight, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            if (!value.isNullOrBlank()) {
+                Text(
+                    value,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    modifier = Modifier.padding(end = 6.dp),
+                )
+            }
+            Icon(Icons.Rounded.ChevronRight, null, Modifier.size(SettingsLayout.chevron), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (showDivider) {
             HorizontalDivider(
-                Modifier.padding(start = 18.dp),
+                Modifier.padding(start = SettingsLayout.rowHorizontal),
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
             )
         }
@@ -781,8 +1031,8 @@ private fun MetadataValueRow(title: String, value: String, showDivider: Boolean 
 }
 
 @Composable
-private fun MetadataOsPage(model: BrowserViewModel) {
-    SettingsScroll {
+private fun MetadataOsPage(model: BrowserViewModel, listState: LazyListState) {
+    SettingsScroll(listState) {
         item {
             SettingsModuleCard {
                 AliasOs.entries.forEachIndexed { index, os ->
@@ -802,6 +1052,7 @@ private fun MetadataOsPage(model: BrowserViewModel) {
 
 @Composable
 private fun MetadataCatalogPage(
+    listState: LazyListState,
     items: List<AliasNamedItem>,
     selectedCode: String?,
     onSelect: (String?) -> Unit,
@@ -818,6 +1069,7 @@ private fun MetadataCatalogPage(
             leadingIcon = { Icon(Icons.Rounded.Search, null) },
         )
         LazyColumn(
+            state = listState,
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
@@ -838,7 +1090,7 @@ private fun MetadataCatalogPage(
 }
 
 @Composable
-private fun MetadataLocationPage(model: BrowserViewModel) {
+private fun MetadataLocationPage(model: BrowserViewModel, listState: LazyListState) {
     var query by remember { mutableStateOf("") }
     var suggestions by remember { mutableStateOf<List<AliasPlaceSuggestion>>(emptyList()) }
     val alias = model.alias
@@ -862,6 +1114,7 @@ private fun MetadataLocationPage(model: BrowserViewModel) {
             leadingIcon = { Icon(Icons.Rounded.Search, null) },
         )
         LazyColumn(
+            state = listState,
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
@@ -872,7 +1125,7 @@ private fun MetadataLocationPage(model: BrowserViewModel) {
                         model.destroyWebViews()
                     }
                     if (alias.hasLocation) {
-                        Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
+                        Column(Modifier.padding(horizontal = SettingsLayout.rowHorizontal, vertical = SettingsLayout.rowVertical)) {
                             Text(alias.locationLabel, fontWeight = FontWeight.Medium)
                             Text(
                                 "${alias.locationLatitude}, ${alias.locationLongitude}",
@@ -897,7 +1150,7 @@ private fun MetadataLocationPage(model: BrowserViewModel) {
                                         suggestions = emptyList()
                                         model.destroyWebViews()
                                     }
-                                    .padding(horizontal = 18.dp, vertical = 12.dp),
+                                    .padding(horizontal = SettingsLayout.rowHorizontal, vertical = SettingsLayout.rowVertical),
                             ) {
                                 Text(place.name, fontWeight = FontWeight.Medium)
                                 if (place.subtitle.isNotBlank()) {
@@ -910,7 +1163,7 @@ private fun MetadataLocationPage(model: BrowserViewModel) {
                             }
                             if (index < suggestions.lastIndex) {
                                 HorizontalDivider(
-                                    Modifier.padding(start = 18.dp),
+                                    Modifier.padding(start = SettingsLayout.rowHorizontal),
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
                                 )
                             }
@@ -926,11 +1179,11 @@ private fun MetadataLocationPage(model: BrowserViewModel) {
 }
 
 @Composable
-private fun CookieSettings(model: BrowserViewModel) {
-    SettingsScroll {
+private fun CookieSettings(model: BrowserViewModel, listState: LazyListState) {
+    SettingsScroll(listState) {
         item {
             SettingsModuleCard {
-                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Website Data", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(
                         "Android WebView keeps website cookies in its protected app storage. Bookmer login cookies are preserved until you log out or clear all website data.",
@@ -948,9 +1201,9 @@ private fun CookieSettings(model: BrowserViewModel) {
 }
 
 @Composable
-private fun BlockedSitesSettings(model: BrowserViewModel) {
+private fun BlockedSitesSettings(model: BrowserViewModel, listState: LazyListState) {
     var add by remember { mutableStateOf(false) }
-    SettingsScroll {
+    SettingsScroll(listState) {
         item {
             SettingsModuleCard {
                 SettingsModuleRow("Add Website", Icons.Rounded.Add, SettingsAccent.blue, showDivider = model.settings.blockedSites.isNotEmpty()) {
@@ -958,7 +1211,7 @@ private fun BlockedSitesSettings(model: BrowserViewModel) {
                 }
                 model.settings.blockedSites.forEachIndexed { index, site ->
                     Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                        Modifier.fillMaxWidth().padding(horizontal = SettingsLayout.rowHorizontal, vertical = SettingsLayout.rowVertical),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(Modifier.weight(1f)) {
@@ -984,9 +1237,9 @@ private fun BlockedSitesSettings(model: BrowserViewModel) {
 }
 
 @Composable
-private fun CloseTabsSettings(model: BrowserViewModel) {
+private fun CloseTabsSettings(model: BrowserViewModel, listState: LazyListState) {
     val options = listOf("Manually" to 0, "After One Day" to 1, "After One Week" to 7, "After One Month" to 30)
-    SettingsScroll {
+    SettingsScroll(listState) {
         item {
             SettingsModuleCard {
                 options.forEachIndexed { index, (label, days) ->
@@ -1000,10 +1253,10 @@ private fun CloseTabsSettings(model: BrowserViewModel) {
 }
 
 @Composable
-private fun SearchEngineSettings(model: BrowserViewModel) {
+private fun SearchEngineSettings(model: BrowserViewModel, listState: LazyListState) {
     var add by remember { mutableStateOf(false) }
     val engines = SearchEngine.entries.sortedBy { it.label }
-    SettingsScroll {
+    SettingsScroll(listState) {
         item {
             SettingsModuleCard {
                 engines.forEachIndexed { index, engine ->
@@ -1033,14 +1286,14 @@ private fun SearchEngineSettings(model: BrowserViewModel) {
 }
 
 @Composable
-private fun TranslateSettings(model: BrowserViewModel) {
+private fun TranslateSettings(model: BrowserViewModel, listState: LazyListState) {
     val languages = listOf(
         "English" to "en", "Deutsch" to "de", "Français" to "fr", "Español" to "es",
         "Italiano" to "it", "Português" to "pt", "Nederlands" to "nl", "Polski" to "pl",
         "Русский" to "ru", "Türkçe" to "tr", "العربية" to "ar", "日本語" to "ja",
         "한국어" to "ko", "中文" to "zh-CN",
     )
-    SettingsScroll {
+    SettingsScroll(listState) {
         item { ExplanatoryCard("Pages are translated with free Google Translate. The Google Translate banner may appear on the page.") }
         item {
             SettingsModuleCard {
@@ -1063,8 +1316,199 @@ private val wallpapers = listOf(
     "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1080&fit=max&q=80",
 )
 
+private val wallpaperTextColorPresets = listOf("#FFFFFF", "#111111")
+
+private fun normalizeWallpaperTextHex(hex: String): String {
+    var cleaned = hex.trim()
+    if (!cleaned.startsWith("#")) cleaned = "#$cleaned"
+    return cleaned.uppercase()
+}
+
+private fun colorToWallpaperHex(color: Color): String {
+    val rgb = color.toArgb() and 0xFFFFFF
+    return String.format("#%06X", rgb)
+}
+
 @Composable
-private fun WallpaperSettings(model: BrowserViewModel) {
+private fun WallpaperSettings(
+    model: BrowserViewModel,
+    open: (SettingsPage) -> Unit,
+    listState: LazyListState,
+) {
+    val hasWallpaper = model.settings.wallpaper != null
+    SettingsScroll(listState) {
+        item {
+            SettingsModuleCard {
+                MetadataValueRow("Choose Wallpaper") {
+                    open(SettingsPage.WALLPAPER_PICK)
+                }
+            }
+        }
+        item {
+            ExplanatoryCard("Wallpaper syncs with your Bookmer account when you are signed in.")
+        }
+        if (hasWallpaper) {
+            item {
+                SettingsModuleCard {
+                    Column(
+                        Modifier.padding(
+                            horizontal = SettingsLayout.rowHorizontal,
+                            vertical = SettingsLayout.rowVertical,
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text("Blur", fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodyMedium)
+                        Slider(
+                            model.settings.wallpaperBlur,
+                            { value -> model.preferences.update { it.copy(wallpaperBlur = value) } },
+                            valueRange = 0f..24f,
+                        )
+                        Text("Dim", fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodyMedium)
+                        Slider(
+                            model.settings.wallpaperDim,
+                            { value -> model.preferences.update { it.copy(wallpaperDim = value) } },
+                            valueRange = 0f..0.7f,
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            SettingsModuleCard {
+                Column(
+                    Modifier.padding(
+                        horizontal = SettingsLayout.rowHorizontal,
+                        vertical = SettingsLayout.rowVertical,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("Text color", fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodyMedium)
+                    WallpaperTextColorPicker(
+                        currentHex = model.settings.wallpaperTextColor,
+                        onSelect = { hex -> model.preferences.update { it.copy(wallpaperTextColor = normalizeWallpaperTextHex(hex)) } },
+                    )
+                    Text(
+                        "Titles and icons on the Collection. Without a wallpaper, Light uses black and Dark uses white.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WallpaperTextColorPicker(
+    currentHex: String,
+    onSelect: (String) -> Unit,
+) {
+    var showCustomPicker by remember { mutableStateOf(false) }
+    val normalized = normalizeWallpaperTextHex(currentHex)
+    val isCustom = wallpaperTextColorPresets.none { normalizeWallpaperTextHex(it) == normalized }
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        wallpaperTextColorPresets.forEach { preset ->
+            WallpaperTextColorSwatch(
+                hex = preset,
+                selected = normalizeWallpaperTextHex(preset) == normalized,
+                onClick = { onSelect(preset) },
+            )
+        }
+        WallpaperTextColorSwatch(
+            hex = if (isCustom) normalized else "#888888",
+            selected = isCustom,
+            onClick = { showCustomPicker = true },
+            showPaletteHint = !isCustom,
+        )
+    }
+    if (showCustomPicker) {
+        WallpaperCustomColorDialog(
+            initialHex = normalized,
+            onDismiss = { showCustomPicker = false },
+            onConfirm = { hex ->
+                onSelect(hex)
+                showCustomPicker = false
+            },
+        )
+    }
+}
+
+@Composable
+private fun WallpaperTextColorSwatch(
+    hex: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    showPaletteHint: Boolean = false,
+) {
+    val fill = Color.fromHex(hex, Color.White)
+    val checkTint = if (normalizeWallpaperTextHex(hex) == "#FFFFFF") Color.Black else Color.White
+    Box(
+        Modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .background(fill)
+            .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f), CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        when {
+            selected -> Icon(Icons.Rounded.Check, null, Modifier.size(16.dp), tint = checkTint)
+            showPaletteHint -> Icon(
+                Icons.Rounded.Palette,
+                contentDescription = "Custom color",
+                Modifier.size(16.dp),
+                tint = Color.White.copy(alpha = 0.92f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun WallpaperCustomColorDialog(
+    initialHex: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    val parsed = Color.fromHex(initialHex, Color.White)
+    var red by remember { mutableIntStateOf((parsed.red * 255f).toInt().coerceIn(0, 255)) }
+    var green by remember { mutableIntStateOf((parsed.green * 255f).toInt().coerceIn(0, 255)) }
+    var blue by remember { mutableIntStateOf((parsed.blue * 255f).toInt().coerceIn(0, 255)) }
+    val preview = Color(red / 255f, green / 255f, blue / 255f)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Custom color") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(preview)
+                        .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f), RoundedCornerShape(12.dp)),
+                )
+                Text("Red", style = MaterialTheme.typography.labelMedium)
+                Slider(red.toFloat(), { red = it.toInt().coerceIn(0, 255) }, valueRange = 0f..255f)
+                Text("Green", style = MaterialTheme.typography.labelMedium)
+                Slider(green.toFloat(), { green = it.toInt().coerceIn(0, 255) }, valueRange = 0f..255f)
+                Text("Blue", style = MaterialTheme.typography.labelMedium)
+                Slider(blue.toFloat(), { blue = it.toInt().coerceIn(0, 255) }, valueRange = 0f..255f)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(colorToWallpaperHex(preview)) }) { Text("Apply") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+@Composable
+private fun WallpaperPickSettings(model: BrowserViewModel, listState: LazyListState) {
     val context = LocalContext.current
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
@@ -1072,21 +1516,27 @@ private fun WallpaperSettings(model: BrowserViewModel) {
             model.preferences.update { settings -> settings.copy(wallpaper = it.toString(), wallpaperTextColor = "#FFFFFF") }
         }
     }
-    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    val tileCount = 2 + wallpapers.size
+    val gridRows = (tileCount + 2) / 3
+    val tileHeight = 180.dp
+    val gridSpacing = 8.dp
+    val gridHeight = tileHeight * gridRows + gridSpacing * (gridRows - 1).coerceAtLeast(0)
+    SettingsScroll(listState) {
         item {
             SettingsModuleCard {
                 Column(Modifier.padding(12.dp)) {
                     LazyVerticalGrid(
                         GridCells.Fixed(3),
-                        Modifier.fillMaxWidth().height(390.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        Modifier.fillMaxWidth().height(gridHeight),
+                        horizontalArrangement = Arrangement.spacedBy(gridSpacing),
+                        verticalArrangement = Arrangement.spacedBy(gridSpacing),
+                        userScrollEnabled = false,
                     ) {
                         item {
                             Box(
                                 Modifier
                                     .fillMaxWidth()
-                                    .height(180.dp)
+                                    .height(tileHeight)
                                     .clip(RoundedCornerShape(14.dp))
                                     .background(MaterialTheme.colorScheme.surfaceVariant)
                                     .clickable {
@@ -1104,14 +1554,15 @@ private fun WallpaperSettings(model: BrowserViewModel) {
                             Box(
                                 Modifier
                                     .fillMaxWidth()
-                                    .height(180.dp)
+                                    .height(tileHeight)
                                     .clip(RoundedCornerShape(14.dp))
                                     .background(MaterialTheme.colorScheme.surfaceVariant)
                                     .clickable { picker.launch(arrayOf("image/*")) },
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Icon(Icons.Rounded.Add, null); Text("Choose")
+                                    Icon(Icons.Rounded.Add, null)
+                                    Text("Choose")
                                 }
                             }
                         }
@@ -1119,7 +1570,7 @@ private fun WallpaperSettings(model: BrowserViewModel) {
                             Box {
                                 RemoteImage(
                                     wallpaper,
-                                    Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(14.dp)).background(Color.Gray),
+                                    Modifier.fillMaxWidth().height(tileHeight).clip(RoundedCornerShape(14.dp)).background(Color.Gray),
                                     ContentScale.Crop,
                                 )
                                 Box(Modifier.matchParentSize().clickable {
@@ -1139,26 +1590,12 @@ private fun WallpaperSettings(model: BrowserViewModel) {
                 }
             }
         }
-        item {
-            SettingsModuleCard {
-                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Blur", fontWeight = FontWeight.Medium)
-                    Slider(model.settings.wallpaperBlur, { value -> model.preferences.update { it.copy(wallpaperBlur = value) } }, valueRange = 0f..24f)
-                    Text("Dim", fontWeight = FontWeight.Medium)
-                    Slider(model.settings.wallpaperDim, { value -> model.preferences.update { it.copy(wallpaperDim = value) } }, valueRange = 0f..0.7f)
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlinedButton(onClick = { model.preferences.update { it.copy(wallpaperTextColor = "#FFFFFF") } }) { Text("White") }
-                        OutlinedButton(onClick = { model.preferences.update { it.copy(wallpaperTextColor = "#111111") } }) { Text("Black") }
-                    }
-                }
-            }
-        }
     }
 }
 
 @Composable
-private fun ThemeSettings(model: BrowserViewModel) {
-    SettingsScroll {
+private fun ThemeSettings(model: BrowserViewModel, listState: LazyListState) {
+    SettingsScroll(listState) {
         item {
             SettingsModuleCard {
                 ThemeMode.entries.forEachIndexed { index, theme ->
@@ -1185,8 +1622,8 @@ private fun ThemeSettings(model: BrowserViewModel) {
 }
 
 @Composable
-private fun ToolbarSettings(model: BrowserViewModel, open: (SettingsPage) -> Unit) {
-    SettingsScroll {
+private fun ToolbarSettings(model: BrowserViewModel, open: (SettingsPage) -> Unit, listState: LazyListState) {
+    SettingsScroll(listState) {
         item {
             SettingsModuleCard {
                 ToggleModuleRow(
@@ -1262,8 +1699,8 @@ private fun ToolbarSettings(model: BrowserViewModel, open: (SettingsPage) -> Uni
 }
 
 @Composable
-private fun ToolbarStartPageSettings(model: BrowserViewModel) {
-    SettingsScroll {
+private fun ToolbarStartPageSettings(model: BrowserViewModel, listState: LazyListState) {
+    SettingsScroll(listState) {
         item {
             SettingsModuleCard {
                 StartNavigationAction.entries.forEachIndexed { index, option ->
@@ -1282,8 +1719,8 @@ private fun ToolbarStartPageSettings(model: BrowserViewModel) {
 }
 
 @Composable
-private fun ToolbarOnWebsitesSettings(model: BrowserViewModel) {
-    SettingsScroll {
+private fun ToolbarOnWebsitesSettings(model: BrowserViewModel, listState: LazyListState) {
+    SettingsScroll(listState) {
         item {
             SettingsModuleCard {
                 WebNavigationAction.entries.forEachIndexed { index, option ->
@@ -1316,9 +1753,9 @@ private fun autoRefreshIntervalLabel(seconds: Int): String = when {
 }
 
 @Composable
-private fun ToolbarAutoRefreshSettings(model: BrowserViewModel, open: (SettingsPage) -> Unit) {
+private fun ToolbarAutoRefreshSettings(model: BrowserViewModel, open: (SettingsPage) -> Unit, listState: LazyListState) {
     val intervals = model.settings.autoRefreshIntervals
-    SettingsScroll {
+    SettingsScroll(listState) {
         item {
             SettingsModuleCard {
                 intervals.forEachIndexed { index, seconds ->
@@ -1347,7 +1784,7 @@ private fun ToolbarAutoRefreshSettings(model: BrowserViewModel, open: (SettingsP
 }
 
 @Composable
-private fun ToolbarAddRefreshInterval(model: BrowserViewModel, dismiss: () -> Unit) {
+private fun ToolbarAddRefreshInterval(model: BrowserViewModel, dismiss: () -> Unit, listState: LazyListState) {
     var amount by remember { mutableIntStateOf(15) }
     var unit by remember { mutableStateOf("Seconds") }
     val maxAmount = when (unit) {
@@ -1360,13 +1797,13 @@ private fun ToolbarAddRefreshInterval(model: BrowserViewModel, dismiss: () -> Un
         "Hours" -> amount * 3600
         else -> amount
     }
-    SettingsScroll {
+    SettingsScroll(listState) {
         item {
             SettingsModuleCard {
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .padding(horizontal = SettingsLayout.rowHorizontal, vertical = SettingsLayout.rowVertical),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
@@ -1421,12 +1858,12 @@ private fun ToolbarAddRefreshInterval(model: BrowserViewModel, dismiss: () -> Un
 }
 
 @Composable
-private fun ShortcutEditor(model: BrowserViewModel, page: SettingsPage) {
+private fun ShortcutEditor(model: BrowserViewModel, page: SettingsPage, listState: LazyListState) {
     val context = LocalContext.current
     val kind = if (page == SettingsPage.CONTROL_CENTER) LaunchShortcutKind.CONTROL else LaunchShortcutKind.WIDGET
     val listed = model.settings.shortcuts.filter { it.kind == kind }
     var add by remember { mutableStateOf(false) }
-    SettingsScroll {
+    SettingsScroll(listState) {
         item {
             ExplanatoryCard(
                 when (kind) {
@@ -1448,12 +1885,12 @@ private fun ShortcutEditor(model: BrowserViewModel, page: SettingsPage) {
                 ) { add = true }
                 listed.forEachIndexed { index, shortcut ->
                     Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                        Modifier.fillMaxWidth().padding(horizontal = SettingsLayout.rowHorizontal, vertical = SettingsLayout.rowVertical),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Box(
                             Modifier
-                                .size(40.dp)
+                                .size(SettingsLayout.iconWell)
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(
                                     runCatching { Color(shortcut.color.toColorInt()) }
@@ -1480,7 +1917,7 @@ private fun ShortcutEditor(model: BrowserViewModel, page: SettingsPage) {
                     }
                     if (index < listed.lastIndex) {
                         HorizontalDivider(
-                            Modifier.padding(start = 70.dp),
+                            Modifier.padding(start = SettingsLayout.dividerInset),
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
                         )
                     }
@@ -1514,7 +1951,11 @@ private fun ToggleModuleRow(
         icon = icon,
         accent = accent,
         showDivider = showDivider,
-        trailing = { Switch(checked, change) },
+        iconWell = SettingsLayout.toggleIconWell,
+        iconGlyph = SettingsLayout.toggleIconGlyph,
+        rowVertical = SettingsLayout.toggleRowVertical,
+        dividerInset = SettingsLayout.rowHorizontal + SettingsLayout.toggleIconWell + SettingsLayout.rowIconGap,
+        trailing = { SettingsCompactSwitch(checked = checked, onCheckedChange = change) },
     )
 }
 
@@ -1525,15 +1966,18 @@ private fun CheckModuleRow(title: String, selected: Boolean, showDivider: Boolea
             Modifier
                 .fillMaxWidth()
                 .clickable(onClick = action)
-                .padding(horizontal = 18.dp, vertical = 15.dp),
+                .padding(
+                    horizontal = SettingsLayout.rowHorizontal,
+                    vertical = SettingsLayout.checkRowVertical,
+                ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-            if (selected) Icon(Icons.Rounded.Check, null, tint = SettingsAccent.blue)
+            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            if (selected) Icon(Icons.Rounded.Check, null, Modifier.size(20.dp), tint = SettingsAccent.blue)
         }
         if (showDivider) {
             HorizontalDivider(
-                Modifier.padding(start = 18.dp),
+                Modifier.padding(start = SettingsLayout.rowHorizontal),
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
             )
         }
@@ -1554,8 +1998,8 @@ private fun ExplanatoryCard(text: String) {
 private fun SectionLabel(title: String) {
     Text(
         title,
-        Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp),
-        style = MaterialTheme.typography.labelLarge,
+        Modifier.padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+        style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         fontWeight = FontWeight.SemiBold,
     )

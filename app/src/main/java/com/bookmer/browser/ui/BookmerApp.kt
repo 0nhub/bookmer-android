@@ -92,6 +92,13 @@ private fun BrowserShell(model: BrowserViewModel) {
         }
     }
 
+    // Settings scroll must not compete with the full browser shell recomposing every frame.
+    if (model.overlay == Overlay.SETTINGS) {
+        LightOverlayStatusBar()
+        SettingsScreen(model)
+        return
+    }
+
     val browsingWeb = model.readerContent == null
         && !model.showsCollectionHome
         && model.blockedPageUrl == null
@@ -103,26 +110,20 @@ private fun BrowserShell(model: BrowserViewModel) {
         else -> false
     }
 
-    val view = LocalView.current
-    SideEffect {
-        val window = (view.context as? Activity)?.window ?: return@SideEffect
-        val insets = WindowCompat.getInsetsController(window, view)
-        // Dark clock/battery on light Settings (and similar screens); white icons on the black browse band.
-        val darkStatusIcons = lightAppOverlay && !darkTheme
-        insets.isAppearanceLightStatusBars = darkStatusIcons
-        insets.isAppearanceLightNavigationBars = darkStatusIcons
-        if (browsingWeb && !lightAppOverlay) {
-            window.statusBarColor = Color.Black.toArgb()
-        } else if (lightAppOverlay) {
-            window.statusBarColor = android.graphics.Color.TRANSPARENT
-        }
-    }
+    LightOverlayStatusBar(browsingWeb = browsingWeb, lightAppOverlay = lightAppOverlay, darkTheme = darkTheme)
 
     Box(Modifier.fillMaxSize()) {
         when {
             model.readerContent != null -> ReaderScreen(model, Modifier.fillMaxSize())
-            model.showsCollectionHome -> CollectionScreen(model, Modifier.fillMaxSize())
+            model.showsCollectionHome -> {
+                if (lightAppOverlay) {
+                    OverlayUnderlayPlaceholder(collectionHome = true)
+                } else {
+                    CollectionScreen(model, Modifier.fillMaxSize())
+                }
+            }
             model.blockedPageUrl != null -> BlockedPage(model.blockedPageUrl.orEmpty(), model::openHome)
+            lightAppOverlay -> OverlayUnderlayPlaceholder(collectionHome = false)
             else -> {
                 if (model.isImmersive) {
                     BrowserWebView(model, Modifier.fillMaxSize())
@@ -198,8 +199,8 @@ private fun BrowserShell(model: BrowserViewModel) {
         }
 
         when (model.overlay) {
+            Overlay.SETTINGS -> Unit // Handled above via dedicated branch (scroll isolation).
             Overlay.TABS -> TabsSwitcherScreen(model)
-            Overlay.SETTINGS -> SettingsScreen(model)
             Overlay.HISTORY -> HistoryScreen(model)
             Overlay.TAB_HISTORY -> TabHistoryScreen(model)
             Overlay.DOWNLOADS -> DownloadsScreen(model)
@@ -211,6 +212,38 @@ private fun BrowserShell(model: BrowserViewModel) {
         if (model.hideConfirmDraft != null) HideElementConfirmDialog(model)
         if (model.showHideElementsManage) HideElementsManageSheet(model)
     }
+}
+
+@Composable
+private fun LightOverlayStatusBar(
+    browsingWeb: Boolean = false,
+    lightAppOverlay: Boolean = true,
+    darkTheme: Boolean = bookmerIsDarkTheme(),
+) {
+    val view = LocalView.current
+    SideEffect {
+        val window = (view.context as? Activity)?.window ?: return@SideEffect
+        val insets = WindowCompat.getInsetsController(window, view)
+        val darkStatusIcons = lightAppOverlay && !darkTheme
+        insets.isAppearanceLightStatusBars = darkStatusIcons
+        insets.isAppearanceLightNavigationBars = darkStatusIcons
+        if (browsingWeb && !lightAppOverlay) {
+            window.statusBarColor = Color.Black.toArgb()
+        } else if (lightAppOverlay) {
+            window.statusBarColor = android.graphics.Color.TRANSPARENT
+        }
+    }
+}
+
+/** Cheap backdrop while full-screen overlays (Settings, History, …) cover the shell — avoids WebView/Collection drawing underneath. */
+@Composable
+private fun OverlayUnderlayPlaceholder(collectionHome: Boolean) {
+    val color = when {
+        collectionHome && bookmerIsDarkTheme() -> Color(0xFF19191B)
+        collectionHome -> Color(0xFFF7F7F9)
+        else -> Color.Black
+    }
+    Box(Modifier.fillMaxSize().background(color))
 }
 
 /** Sticky stub after swipe-down on the address bar — tap restores chrome. Shows tab title. */

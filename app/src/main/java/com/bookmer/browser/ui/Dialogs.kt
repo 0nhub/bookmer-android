@@ -8,10 +8,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -30,7 +33,9 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,6 +43,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -56,42 +66,192 @@ import androidx.compose.ui.platform.LocalContext
 @Composable
 fun SetupWelcomeScreen(model: BrowserViewModel) {
     var step by remember { mutableStateOf(0) }
-    var engine by remember { mutableStateOf(model.settings.searchEngine) }
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(horizontal = 28.dp)) {
+    var engine by remember { mutableStateOf<SearchEngine?>(null) }
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         if (step == 0) {
-            Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Spacer(Modifier.weight(1f))
-                Image(
-                    painter = painterResource(R.drawable.bookmer_logo),
-                    contentDescription = "Bookmer",
-                    modifier = Modifier.width(220.dp).height(65.dp),
-                )
-                Spacer(Modifier.height(56.dp))
-                Button(onClick = { model.presentLogin() }, Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(14.dp)) { Text("Log in") }
-                Spacer(Modifier.height(14.dp))
-                OutlinedButton(
-                    onClick = { step = 1 },
-                    modifier = Modifier.fillMaxWidth().height(54.dp),
-                    shape = RoundedCornerShape(14.dp),
-                ) { Text("Continue without signing in") }
-                Spacer(Modifier.weight(2f))
+            Box(Modifier.fillMaxSize().padding(horizontal = 28.dp).statusBarsPadding()) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .fillMaxHeight(1f / 3f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Image(
+                        painter = painterResource(R.drawable.bookmer_logo),
+                        contentDescription = "Bookmer",
+                        modifier = Modifier.width(220.dp).height(65.dp),
+                    )
+                }
+                Column(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(bottom = 28.dp)
+                        .fillMaxWidth(),
+                ) {
+                    Button(onClick = { model.presentLogin() }, Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(14.dp)) { Text("Log in") }
+                    Spacer(Modifier.height(14.dp))
+                    OutlinedButton(
+                        onClick = { step = 1 },
+                        modifier = Modifier.fillMaxWidth().height(54.dp),
+                        shape = RoundedCornerShape(14.dp),
+                    ) { Text("Continue without signing in") }
+                }
             }
         } else {
-            Column(
-                Modifier.fillMaxWidth().align(Alignment.Center),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(18.dp),
+            SetupSearchEngineStep(
+                selected = engine,
+                onSelect = { engine = it },
+                onStart = {
+                    val chosen = engine ?: return@SetupSearchEngineStep
+                    model.preferences.update { it.copy(setupCompleted = true, searchEngine = chosen) }
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SetupSearchEngineStep(
+    selected: SearchEngine?,
+    onSelect: (SearchEngine) -> Unit,
+    onStart: () -> Unit,
+) {
+    val engines = remember { SearchEngine.entries.sortedBy { it.label } }
+    val scrollState = rememberScrollState()
+    val background = MaterialTheme.colorScheme.background
+    val showScrollAffordance by remember {
+        derivedStateOf { scrollState.maxValue > 0 && scrollState.value < scrollState.maxValue - 4 }
+    }
+
+    Box(Modifier.fillMaxSize().statusBarsPadding()) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(bottom = 96.dp),
+        ) {
+            Column(Modifier.padding(horizontal = 28.dp)) {
+                Text(
+                    "Search Engine",
+                    style = MaterialTheme.typography.headlineMedium,
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Pick one search engine. You can change this later in Settings.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            Spacer(Modifier.height(20.dp))
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .then(
+                        if (showScrollAffordance) {
+                            Modifier.drawBehind {
+                                val fadeHeight = 120.dp.toPx()
+                                drawRect(
+                                    brush = Brush.verticalGradient(
+                                        0f to Color.Transparent,
+                                        0.25f to background.copy(alpha = 0.55f),
+                                        0.55f to background.copy(alpha = 0.88f),
+                                        1f to background,
+                                        startY = size.height - fadeHeight,
+                                        endY = size.height,
+                                    ),
+                                    topLeft = Offset(0f, size.height - fadeHeight),
+                                    size = Size(size.width, fadeHeight),
+                                )
+                            }
+                        } else {
+                            Modifier
+                        },
+                    ),
             ) {
-                Text("Choose a Search Engine", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
-                Text("You can change this later in Settings.", color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-                Column(Modifier.height(340.dp).verticalScroll(rememberScrollState())) {
-                    SearchEngine.entries.sortedBy { it.label }.forEach { option ->
-                        Row(Modifier.fillMaxWidth().clickable { engine = option }.padding(vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(option.label, Modifier.weight(1f)); if (engine == option) Icon(Icons.Rounded.Check, null)
-                        }
+                Column(
+                    Modifier
+                        .fillMaxSize()
+                        .verticalScroll(scrollState),
+                ) {
+                    engines.forEach { option ->
+                        SearchEngineSetupRow(
+                            option = option,
+                            selected = selected == option,
+                            onSelect = { onSelect(option) },
+                        )
+                    }
+                    Spacer(Modifier.height(32.dp))
+                }
+                if (showScrollAffordance) {
+                    Row(
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .padding(bottom = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        Icon(
+                            Icons.Rounded.ExpandMore,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            "More below",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
                     }
                 }
-                Button(onClick = { model.preferences.update { it.copy(setupCompleted = true, searchEngine = engine) } }, Modifier.fillMaxWidth()) { Text("Start Browsing") }
+            }
+        }
+        Button(
+            onClick = onStart,
+            enabled = selected != null,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(horizontal = 28.dp)
+                .padding(bottom = 28.dp)
+                .fillMaxWidth()
+                .height(54.dp),
+            shape = RoundedCornerShape(14.dp),
+        ) {
+            Text("Start Browsing")
+        }
+    }
+}
+
+@Composable
+private fun SearchEngineSetupRow(
+    option: SearchEngine,
+    selected: Boolean,
+    onSelect: () -> Unit,
+) {
+    val rowBackground by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent,
+        label = "searchEngineRowSelection",
+    )
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .background(rowBackground)
+            .clickable(onClick = onSelect)
+            .padding(horizontal = 28.dp, vertical = 12.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SearchEngineBrandIcon(option)
+            Spacer(Modifier.width(14.dp))
+            Text(option.label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+            if (selected) {
+                Icon(Icons.Rounded.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             }
         }
     }

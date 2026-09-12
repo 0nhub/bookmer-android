@@ -42,6 +42,12 @@ import kotlin.math.roundToInt
 
 enum class Overlay { NONE, TABS, SETTINGS, HISTORY, TAB_HISTORY, DOWNLOADS, NAVIGATE, BOOKMARK_TOOLS }
 
+/** Full-screen sheets that should not fight the UI thread with WebView progress / chrome updates. */
+private fun Overlay.occludesBrowsingChrome(): Boolean = when (this) {
+    Overlay.NONE, Overlay.TABS -> false
+    else -> true
+}
+
 data class PendingCollect(val url: String, val title: String)
 data class PendingDownload(val url: String, val userAgent: String?, val contentDisposition: String?, val mimeType: String?, val size: Long) {
     val filename: String get() = URLUtil.guessFileName(url, contentDisposition, mimeType)
@@ -260,7 +266,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
         // Do not capture while the tab deck covers the WebView — that produced recursive
         // previews of the switcher chrome (trash / + / nested cards).
-        if (overlay == Overlay.TABS) {
+        if (overlay.occludesBrowsingChrome() || overlay == Overlay.TABS) {
             done?.invoke()
             return
         }
@@ -440,6 +446,24 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         activeWebView?.stopLoading()
         blockedPageUrl = url
         updateTab { it.copy(url = url, isBookmerHome = false, title = "Blocked") }
+    }
+
+    /** URL shown in the address field when not editing (iOS `displayedAddress`). */
+    fun displayedAddress(): String {
+        blockedPageUrl?.let { return it }
+        if (showsCollectionHome) return ""
+        return currentTab.url.orEmpty()
+    }
+
+    fun beginEditingAddress() {
+        isEditingAddress = true
+        if (toolbarCollapsed || toolbarStickyCollapsed) expandToolbar()
+        addressText = displayedAddress()
+    }
+
+    fun cancelEditingAddress() {
+        isEditingAddress = false
+        addressText = displayedAddress()
     }
 
     fun submitAddress() = load(addressText)
@@ -1037,7 +1061,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 lastVisitedAt = System.currentTimeMillis(),
             )
         }
-        if (tabId == selectedTabId) {
+        if (tabId == selectedTabId && !overlay.occludesBrowsingChrome()) {
             isLoading = true
             pageProgress = 0
             addressText = displayUrl
@@ -1066,27 +1090,32 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             BrowserWebConfigurator.injectPageRules(web, settings, prefersDesktop)
         }
         if (tabId == selectedTabId) {
-            isLoading = false
-            pageProgress = 100
-            if (translating) {
-                addressText = translateOriginalUrls[tabId] ?: unwrapGoogleTranslateUrl(url) ?: addressText
-                scheduleEndTranslateFeedback()
-            } else if (isTranslating) {
-                endTranslateFeedbackNow()
+            if (!overlay.occludesBrowsingChrome()) {
+                isLoading = false
+                pageProgress = 100
+                if (translating) {
+                    addressText = translateOriginalUrls[tabId] ?: unwrapGoogleTranslateUrl(url) ?: addressText
+                    scheduleEndTranslateFeedback()
+                } else if (isTranslating) {
+                    endTranslateFeedbackNow()
+                }
+                updateNavigationState()
             }
-            updateNavigationState()
             if (isHideElementsActive) {
                 webViews[tabId]?.let { injectAndStartPick(it, startImmediately = true) }
             } else {
                 applyHiddenElementsToCurrentPage()
             }
-            captureActiveTabPreview()
+            if (!overlay.occludesBrowsingChrome()) {
+                captureActiveTabPreview()
+            }
         }
         persistSession()
     }
 
     fun onProgress(tabId: String, value: Int) {
         if (tabId != selectedTabId) return
+        if (overlay.occludesBrowsingChrome()) return
         pageProgress = value
         isLoading = value < 100
         if (isTranslating && value >= 92) scheduleEndTranslateFeedback()
@@ -1137,6 +1166,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun onPageScrolled(web: WebView, scrollY: Int, oldScrollY: Int) {
         if (web != activeWebView) return
+        if (overlay.occludesBrowsingChrome()) return
         val delta = scrollY - oldScrollY
         when {
             !isImmersive && scrollY <= 8 -> expandToolbarFromScroll()

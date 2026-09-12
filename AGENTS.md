@@ -153,6 +153,8 @@ Definiert in `BrowserViewModel.kt` als `enum class Overlay`.
 
 **Harte Regel:** „Tab History“ öffnet `Overlay.TAB_HISTORY` — **nie** `HISTORY`.
 
+**Build-Regel (Kotlin):** Jeder `when (model.overlay)` / `when (overlay)` auf `enum class Overlay` muss **alle** Enum-Werte abdecken — auch wenn ein Overlay woanders per `if (overlay == …) return` früher behandelt wird. Nach Änderungen an Overlay-Routing in `BookmerApp.kt` immer `:app:compileDebugKotlin` ausführen. Typischer Fix für einen extra Early-Return-Branch: `Overlay.SETTINGS -> Unit` (oder passendes Composable) im verbleibenden `when` ergänzen.
+
 ---
 
 ## 7. Harte Produktregeln (nicht brechen)
