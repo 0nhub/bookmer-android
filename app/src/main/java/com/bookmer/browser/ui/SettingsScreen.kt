@@ -1338,60 +1338,72 @@ private fun WallpaperSettings(
     val hasWallpaper = model.settings.wallpaper != null
     SettingsScroll(listState) {
         item {
-            SettingsModuleCard {
-                MetadataValueRow("Choose Wallpaper") {
-                    open(SettingsPage.WALLPAPER_PICK)
-                }
-            }
-        }
-        item {
-            ExplanatoryCard("Wallpaper syncs with your Bookmer account when you are signed in.")
-        }
-        if (hasWallpaper) {
-            item {
+            SettingsListSection {
                 SettingsModuleCard {
-                    Column(
-                        Modifier.padding(
-                            horizontal = SettingsLayout.rowHorizontal,
-                            vertical = SettingsLayout.rowVertical,
-                        ),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Text("Blur", fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodyMedium)
-                        Slider(
-                            model.settings.wallpaperBlur,
-                            { value -> model.preferences.update { it.copy(wallpaperBlur = value) } },
-                            valueRange = 0f..24f,
-                        )
-                        Text("Dim", fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodyMedium)
-                        Slider(
-                            model.settings.wallpaperDim,
-                            { value -> model.preferences.update { it.copy(wallpaperDim = value) } },
-                            valueRange = 0f..0.7f,
-                        )
+                    MetadataValueRow("Choose Wallpaper") {
+                        open(SettingsPage.WALLPAPER_PICK)
                     }
                 }
             }
         }
         item {
-            SettingsModuleCard {
-                Column(
-                    Modifier.padding(
-                        horizontal = SettingsLayout.rowHorizontal,
-                        vertical = SettingsLayout.rowVertical,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("Text color", fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodyMedium)
-                    WallpaperTextColorPicker(
-                        currentHex = model.settings.wallpaperTextColor,
-                        onSelect = { hex -> model.preferences.update { it.copy(wallpaperTextColor = normalizeWallpaperTextHex(hex)) } },
-                    )
-                    Text(
-                        "Titles and icons on the Collection. Without a wallpaper, Light uses black and Dark uses white.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+            SettingsListSection {
+                ExplanatoryCard("Wallpaper syncs with your Bookmer account when you are signed in.")
+            }
+        }
+        if (hasWallpaper) {
+            item {
+                SettingsListSection {
+                    SettingsModuleCard {
+                        Column(
+                            Modifier.padding(
+                                horizontal = SettingsLayout.rowHorizontal,
+                                vertical = 14.dp,
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(18.dp),
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("Blur", fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodyMedium)
+                                Slider(
+                                    model.settings.wallpaperBlur,
+                                    { value -> model.preferences.update { it.copy(wallpaperBlur = value) } },
+                                    valueRange = 0f..24f,
+                                )
+                            }
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("Dim", fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodyMedium)
+                                Slider(
+                                    model.settings.wallpaperDim,
+                                    { value -> model.preferences.update { it.copy(wallpaperDim = value) } },
+                                    valueRange = 0f..0.7f,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            SettingsListSection {
+                SettingsModuleCard {
+                    Column(
+                        Modifier.padding(
+                            horizontal = SettingsLayout.rowHorizontal,
+                            vertical = 14.dp,
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text("Text color", fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodyMedium)
+                        WallpaperTextColorPicker(
+                            currentHex = model.settings.wallpaperTextColor,
+                            onSelect = { hex -> model.preferences.update { it.copy(wallpaperTextColor = normalizeWallpaperTextHex(hex)) } },
+                        )
+                        Text(
+                            "Titles and icons on the Collection. Without a wallpaper, Light uses black and Dark uses white.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                 }
             }
         }
@@ -1625,74 +1637,78 @@ private fun ThemeSettings(model: BrowserViewModel, listState: LazyListState) {
 private fun ToolbarSettings(model: BrowserViewModel, open: (SettingsPage) -> Unit, listState: LazyListState) {
     SettingsScroll(listState) {
         item {
-            SettingsModuleCard {
-                ToggleModuleRow(
-                    "Hide Toolbar",
-                    Icons.Rounded.VisibilityOff,
-                    SettingsAccent.purple,
-                    model.settings.hideToolbar,
-                    showDivider = false,
-                ) { value ->
-                    model.preferences.update { it.copy(hideToolbar = value) }
-                    if (!value) model.expandToolbar()
-                }
-            }
-        }
-        item {
-            ExplanatoryCard("Scroll down to hide completely, scroll up to show. Swipe down on the address bar for a sticky title strip — tap it to restore.")
-        }
-        item { SectionLabel("Navigation Button") }
-        item {
-            SettingsModuleCard {
-                SettingsModuleRow(
-                    "Start Page",
-                    Icons.Rounded.Home,
-                    SettingsAccent.blue,
-                    value = model.settings.startNavigationAction.label,
-                ) { open(SettingsPage.TOOLBAR_START_PAGE) }
-                SettingsModuleRow(
-                    "On Websites",
-                    Icons.Rounded.Language,
-                    SettingsAccent.teal,
-                    value = model.settings.webNavigationAction.label,
-                    showDivider = false,
-                ) { open(SettingsPage.TOOLBAR_ON_WEBSITES) }
-            }
-        }
-        item { SectionLabel("Action Button") }
-        item {
-            SettingsModuleCard {
-                ToolbarAction.entries.forEachIndexed { index, option ->
-                    CheckModuleRow(
-                        option.label,
-                        model.settings.toolbarAction == option,
-                        showDivider = true,
-                    ) {
-                        model.preferences.update { it.copy(toolbarAction = option) }
+            SettingsListSection {
+                SettingsModuleCard {
+                    ToggleModuleRow(
+                        "Hide Toolbar",
+                        Icons.Rounded.VisibilityOff,
+                        SettingsAccent.purple,
+                        model.settings.hideToolbar,
+                        showDivider = false,
+                    ) { value ->
+                        model.preferences.update { it.copy(hideToolbar = value) }
+                        if (!value) model.expandToolbar()
                     }
                 }
-                ToggleModuleRow(
-                    "Open Menu on Long Press",
-                    Icons.Rounded.Tune,
-                    SettingsAccent.indigo,
-                    model.settings.openActionMenuOnLongPress,
-                    showDivider = false,
-                ) { value ->
-                    model.preferences.update { it.copy(openActionMenuOnLongPress = value) }
+                ExplanatoryCard("Scroll down to hide completely, scroll up to show. Swipe down on the address bar for a sticky title strip — tap it to restore.")
+            }
+        }
+        item {
+            SettingsListSection {
+                SectionLabel("Navigation Button")
+                SettingsModuleCard {
+                    SettingsModuleRow(
+                        "Start Page",
+                        Icons.Rounded.Home,
+                        SettingsAccent.blue,
+                        value = model.settings.startNavigationAction.label,
+                    ) { open(SettingsPage.TOOLBAR_START_PAGE) }
+                    SettingsModuleRow(
+                        "On Websites",
+                        Icons.Rounded.Language,
+                        SettingsAccent.teal,
+                        value = model.settings.webNavigationAction.label,
+                        showDivider = false,
+                    ) { open(SettingsPage.TOOLBAR_ON_WEBSITES) }
                 }
             }
         }
         item {
-            ExplanatoryCard("When off, tap opens the menu and a long-press runs the selected action. When on, tap runs the action and a long-press opens the menu.")
+            SettingsListSection {
+                SectionLabel("Action Button")
+                SettingsModuleCard {
+                    ToolbarAction.entries.forEachIndexed { index, option ->
+                        CheckModuleRow(
+                            option.label,
+                            model.settings.toolbarAction == option,
+                            showDivider = true,
+                        ) {
+                            model.preferences.update { it.copy(toolbarAction = option) }
+                        }
+                    }
+                    ToggleModuleRow(
+                        "Open Menu on Long Press",
+                        Icons.Rounded.Tune,
+                        SettingsAccent.indigo,
+                        model.settings.openActionMenuOnLongPress,
+                        showDivider = false,
+                    ) { value ->
+                        model.preferences.update { it.copy(openActionMenuOnLongPress = value) }
+                    }
+                }
+                ExplanatoryCard("When off, tap opens the menu and a long-press runs the selected action. When on, tap runs the action and a long-press opens the menu.")
+            }
         }
         item {
-            SettingsModuleCard {
-                SettingsModuleRow(
-                    "Auto Refresh",
-                    Icons.Rounded.Refresh,
-                    SettingsAccent.orange,
-                    showDivider = false,
-                ) { open(SettingsPage.TOOLBAR_AUTO_REFRESH) }
+            SettingsListSection {
+                SettingsModuleCard {
+                    SettingsModuleRow(
+                        "Auto Refresh",
+                        Icons.Rounded.Refresh,
+                        SettingsAccent.orange,
+                        showDivider = false,
+                    ) { open(SettingsPage.TOOLBAR_AUTO_REFRESH) }
+                }
             }
         }
     }
@@ -1702,19 +1718,21 @@ private fun ToolbarSettings(model: BrowserViewModel, open: (SettingsPage) -> Uni
 private fun ToolbarStartPageSettings(model: BrowserViewModel, listState: LazyListState) {
     SettingsScroll(listState) {
         item {
-            SettingsModuleCard {
-                StartNavigationAction.entries.forEachIndexed { index, option ->
-                    CheckModuleRow(
-                        option.label,
-                        model.settings.startNavigationAction == option,
-                        showDivider = index < StartNavigationAction.entries.lastIndex,
-                    ) {
-                        model.preferences.update { it.copy(startNavigationAction = option) }
+            SettingsListSection {
+                SettingsModuleCard {
+                    StartNavigationAction.entries.forEachIndexed { index, option ->
+                        CheckModuleRow(
+                            option.label,
+                            model.settings.startNavigationAction == option,
+                            showDivider = index < StartNavigationAction.entries.lastIndex,
+                        ) {
+                            model.preferences.update { it.copy(startNavigationAction = option) }
+                        }
                     }
                 }
+                ExplanatoryCard("Left button on Collection. Long-press for the other options.")
             }
         }
-        item { ExplanatoryCard("Left button on Collection. Long-press for the other options.") }
     }
 }
 
@@ -1722,19 +1740,21 @@ private fun ToolbarStartPageSettings(model: BrowserViewModel, listState: LazyLis
 private fun ToolbarOnWebsitesSettings(model: BrowserViewModel, listState: LazyListState) {
     SettingsScroll(listState) {
         item {
-            SettingsModuleCard {
-                WebNavigationAction.entries.forEachIndexed { index, option ->
-                    CheckModuleRow(
-                        option.label,
-                        model.settings.webNavigationAction == option,
-                        showDivider = index < WebNavigationAction.entries.lastIndex,
-                    ) {
-                        model.preferences.update { it.copy(webNavigationAction = option) }
+            SettingsListSection {
+                SettingsModuleCard {
+                    WebNavigationAction.entries.forEachIndexed { index, option ->
+                        CheckModuleRow(
+                            option.label,
+                            model.settings.webNavigationAction == option,
+                            showDivider = index < WebNavigationAction.entries.lastIndex,
+                        ) {
+                            model.preferences.update { it.copy(webNavigationAction = option) }
+                        }
                     }
                 }
+                ExplanatoryCard("Left button while browsing. Long-press for the other options.")
             }
         }
-        item { ExplanatoryCard("Left button while browsing. Long-press for the other options.") }
     }
 }
 
@@ -1757,29 +1777,31 @@ private fun ToolbarAutoRefreshSettings(model: BrowserViewModel, open: (SettingsP
     val intervals = model.settings.autoRefreshIntervals
     SettingsScroll(listState) {
         item {
-            SettingsModuleCard {
-                intervals.forEachIndexed { index, seconds ->
-                    SettingsModuleRow(
-                        autoRefreshIntervalLabel(seconds),
-                        Icons.Rounded.Timer,
-                        SettingsAccent.orange,
-                        showChevron = false,
-                        showDivider = true,
-                    ) {
-                        model.preferences.update {
-                            it.copy(autoRefreshIntervals = it.autoRefreshIntervals.filterNot { s -> s == seconds })
+            SettingsListSection {
+                SettingsModuleCard {
+                    intervals.forEachIndexed { index, seconds ->
+                        SettingsModuleRow(
+                            autoRefreshIntervalLabel(seconds),
+                            Icons.Rounded.Timer,
+                            SettingsAccent.orange,
+                            showChevron = false,
+                            showDivider = true,
+                        ) {
+                            model.preferences.update {
+                                it.copy(autoRefreshIntervals = it.autoRefreshIntervals.filterNot { s -> s == seconds })
+                            }
                         }
                     }
+                    SettingsModuleRow(
+                        "Add Interval",
+                        Icons.Rounded.Add,
+                        SettingsAccent.blue,
+                        showDivider = false,
+                    ) { open(SettingsPage.TOOLBAR_ADD_REFRESH) }
                 }
-                SettingsModuleRow(
-                    "Add Interval",
-                    Icons.Rounded.Add,
-                    SettingsAccent.blue,
-                    showDivider = false,
-                ) { open(SettingsPage.TOOLBAR_ADD_REFRESH) }
+                ExplanatoryCard("These intervals appear when you long-press Reload. Tap an interval here to remove it.")
             }
         }
-        item { ExplanatoryCard("These intervals appear when you long-press Reload. Tap an interval here to remove it.") }
     }
 }
 
@@ -1799,58 +1821,62 @@ private fun ToolbarAddRefreshInterval(model: BrowserViewModel, dismiss: () -> Un
     }
     SettingsScroll(listState) {
         item {
-            SettingsModuleCard {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = SettingsLayout.rowHorizontal, vertical = SettingsLayout.rowVertical),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text("Amount", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { amount = (amount - 1).coerceAtLeast(1) }) {
-                            Icon(Icons.Rounded.Remove, "Less")
-                        }
-                        Text("$amount", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        IconButton(onClick = { amount = (amount + 1).coerceAtMost(maxAmount) }) {
-                            Icon(Icons.Rounded.Add, "More")
-                        }
-                    }
-                }
-                HorizontalDivider(Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .45f))
-                listOf("Seconds", "Minutes", "Hours").forEachIndexed { index, option ->
-                    CheckModuleRow(
-                        option,
-                        unit == option,
-                        showDivider = index < 2,
+            SettingsListSection {
+                SettingsModuleCard {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = SettingsLayout.rowHorizontal, vertical = SettingsLayout.rowVertical),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        unit = option
-                        amount = amount.coerceIn(1, when (option) {
-                            "Minutes" -> 120
-                            "Hours" -> 24
-                            else -> 120
-                        })
+                        Text("Amount", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = { amount = (amount - 1).coerceAtLeast(1) }) {
+                                Icon(Icons.Rounded.Remove, "Less")
+                            }
+                            Text("$amount", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            IconButton(onClick = { amount = (amount + 1).coerceAtMost(maxAmount) }) {
+                                Icon(Icons.Rounded.Add, "More")
+                            }
+                        }
+                    }
+                    HorizontalDivider(Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .45f))
+                    listOf("Seconds", "Minutes", "Hours").forEachIndexed { index, option ->
+                        CheckModuleRow(
+                            option,
+                            unit == option,
+                            showDivider = index < 2,
+                        ) {
+                            unit = option
+                            amount = amount.coerceIn(1, when (option) {
+                                "Minutes" -> 120
+                                "Hours" -> 24
+                                else -> 120
+                            })
+                        }
                     }
                 }
+                ExplanatoryCard(autoRefreshIntervalLabel(resolved))
             }
         }
-        item { ExplanatoryCard(autoRefreshIntervalLabel(resolved)) }
         item {
-            SettingsModuleCard {
-                SettingsModuleRow(
-                    "Add",
-                    Icons.Rounded.Check,
-                    SettingsAccent.green,
-                    showChevron = false,
-                    showDivider = false,
-                ) {
-                    val clipped = resolved.coerceIn(1, 24 * 60 * 60)
-                    model.preferences.update { settings ->
-                        if (settings.autoRefreshIntervals.contains(clipped)) settings
-                        else settings.copy(autoRefreshIntervals = (settings.autoRefreshIntervals + clipped).sorted())
+            SettingsListSection {
+                SettingsModuleCard {
+                    SettingsModuleRow(
+                        "Add",
+                        Icons.Rounded.Check,
+                        SettingsAccent.green,
+                        showChevron = false,
+                        showDivider = false,
+                    ) {
+                        val clipped = resolved.coerceIn(1, 24 * 60 * 60)
+                        model.preferences.update { settings ->
+                            if (settings.autoRefreshIntervals.contains(clipped)) settings
+                            else settings.copy(autoRefreshIntervals = (settings.autoRefreshIntervals + clipped).sorted())
+                        }
+                        dismiss()
                     }
-                    dismiss()
                 }
             }
         }
@@ -1988,9 +2014,9 @@ private fun CheckModuleRow(title: String, selected: Boolean, showDivider: Boolea
 private fun ExplanatoryCard(text: String) {
     Text(
         text,
-        Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+        Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        style = MaterialTheme.typography.bodyMedium,
+        style = MaterialTheme.typography.bodySmall,
     )
 }
 
@@ -1998,7 +2024,7 @@ private fun ExplanatoryCard(text: String) {
 private fun SectionLabel(title: String) {
     Text(
         title,
-        Modifier.padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+        Modifier.padding(start = 8.dp, end = 8.dp, top = 10.dp, bottom = 8.dp),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         fontWeight = FontWeight.SemiBold,

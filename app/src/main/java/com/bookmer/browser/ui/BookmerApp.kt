@@ -1,8 +1,11 @@
 package com.bookmer.browser.ui
 
 import android.app.Activity
+import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -11,6 +14,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -32,10 +36,17 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -51,6 +62,8 @@ import com.bookmer.browser.browser.Overlay
 import com.bookmer.browser.data.ThemeMode
 import com.bookmer.browser.ui.theme.BookmerBrowserTheme
 import com.bookmer.browser.ui.theme.bookmerIsDarkTheme
+import kotlin.math.min
+import kotlinx.coroutines.launch
 
 @Composable
 fun BookmerApp(model: BrowserViewModel) {
@@ -112,7 +125,39 @@ private fun BrowserShell(model: BrowserViewModel) {
 
     LightOverlayStatusBar(browsingWeb = browsingWeb, lightAppOverlay = lightAppOverlay, darkTheme = darkTheme)
 
-    Box(Modifier.fillMaxSize()) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val pageWidth = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+        val hostView = LocalView.current
+        val scope = rememberCoroutineScope()
+        val tabSlide = remember { Animatable(0f) }
+        var tabSlideDrag by remember { mutableFloatStateOf(0f) }
+        var tabSlideDragging by remember { mutableStateOf(false) }
+        var isTabSliding by remember { mutableStateOf(false) }
+        val displaySlide = if (tabSlideDragging) tabSlideDrag else tabSlide.value
+        val settleSlide = spring<Float>(dampingRatio = 0.76f, stiffness = 400f)
+        val switchSlide = spring<Float>(dampingRatio = 0.92f, stiffness = 380f)
+        fun cancelTabSlide() {
+            val current = if (tabSlideDragging) tabSlideDrag else tabSlide.value
+            tabSlideDragging = false
+            scope.launch {
+                tabSlide.snapTo(current)
+                tabSlide.animateTo(0f, settleSlide)
+            }
+        }
+        fun animateTabSlide(forward: Boolean, apply: () -> Unit) {
+            if (isTabSliding) return
+            isTabSliding = true
+            tabSlideDragging = false
+            apply()
+            hostView.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+            scope.launch {
+                tabSlide.snapTo(if (forward) pageWidth else -pageWidth)
+                tabSlide.animateTo(0f, switchSlide)
+                isTabSliding = false
+            }
+        }
+
+        Box(Modifier.fillMaxSize().graphicsLayer { translationX = displaySlide }) {
         when {
             model.readerContent != null -> ReaderScreen(model, Modifier.fillMaxSize())
             model.showsCollectionHome -> {
@@ -171,6 +216,7 @@ private fun BrowserShell(model: BrowserViewModel) {
         ) {
             TranslatingStatusPill()
         }
+        }
 
         when {
             model.readerContent != null -> Unit
@@ -187,7 +233,35 @@ private fun BrowserShell(model: BrowserViewModel) {
             // Swipe-down on address bar only — sticky strip with tab title; scroll does nothing.
             model.toolbarStickyCollapsed -> MinimizedChromeStrip(model, Modifier.align(Alignment.BottomCenter))
             // Page scroll hide — chrome is completely gone until scroll-up.
-            model.showsToolbar -> BrowserChrome(model, Modifier.align(Alignment.BottomCenter))
+            model.showsToolbar -> BrowserChrome(
+                model,
+                Modifier.align(Alignment.BottomCenter),
+                tabSlideLocked = isTabSliding,
+                onTabSlideDrag = { dx ->
+                    if (!isTabSliding && dx > 0f && !model.canGoToPreviousTab) {
+                        tabSlideDragging = true
+                        val limit = min(pageWidth * 0.2f, 72f)
+                        tabSlideDrag = (1f - 1f / (dx / limit + 1f)) * limit
+                    }
+                },
+                onTabSlideEnd = { dx, predictedX ->
+                    if (!isTabSliding) {
+                        when {
+                            kotlin.math.abs(dx) <= 50f && kotlin.math.abs(predictedX) <= 80f -> cancelTabSlide()
+                            dx < 0f || predictedX < -100f -> animateTabSlide(forward = true) { model.goToNextTabOrCreate() }
+                            dx > 0f || predictedX > 100f -> {
+                                if (model.canGoToPreviousTab) {
+                                    animateTabSlide(forward = false) { model.goToPreviousTab() }
+                                } else {
+                                    cancelTabSlide()
+                                }
+                            }
+                            else -> cancelTabSlide()
+                        }
+                    }
+                },
+                onTabSlideCancel = { cancelTabSlide() },
+            )
         }
 
         if (model.showImmersiveTip) {

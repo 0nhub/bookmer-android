@@ -13,6 +13,7 @@ import android.os.Looper
 import android.webkit.CookieManager
 import android.webkit.URLUtil
 import android.webkit.WebStorage
+import android.view.View
 import android.webkit.WebView
 import android.widget.Toast
 import androidx.compose.runtime.getValue
@@ -86,6 +87,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     val downloads = mutableStateListOf<DownloadEntry>()
     /** Live page snapshots for the Arc-style tab deck (not persisted). */
     val tabPreviews = mutableStateMapOf<String, android.graphics.Bitmap>()
+    /** Software-draw of the live Collection layer (set only while CollectionScreen is composed). */
+    var collectionSnapshotProvider: (() -> Bitmap?)? = null
     private val refreshHandler = Handler(Looper.getMainLooper())
     private val refreshTasks = mutableMapOf<String, Runnable>()
     /** Original page URL while Google Translate is showing the free web view. */
@@ -242,7 +245,6 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     /** Load cached thumbs for background tabs (Compose only attaches the selected WebView). */
     fun hydrateTabPreviewsFromDisk() {
         tabs.forEach { tab ->
-            if (tab.isBookmerHome) return@forEach
             if (tabPreviews[tab.id] != null) return@forEach
             TabPreviewStore.load(tab.id)?.let { tabPreviews[tab.id] = it }
         }
@@ -260,7 +262,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun captureActiveTabPreview(done: (() -> Unit)? = null) {
         val tabId = selectedTabId
         val tab = tabs.firstOrNull { it.id == tabId }
-        if (tab == null || tab.isBookmerHome) {
+        if (tab == null) {
+            done?.invoke()
+            return
+        }
+        if (tab.isBookmerHome) {
+            collectionSnapshotProvider?.invoke()?.let { commitPreview(tabId, it) }
             done?.invoke()
             return
         }
@@ -303,6 +310,29 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
      * Capture only the WebView's page pixels — never window PixelCopy.
      * Window copies include Compose chrome and (if the deck is open) the tab switcher itself.
      */
+    fun snapshotCollectionRegion(view: View, left: Float, top: Float, width: Float, height: Float): Bitmap? {
+        val w = width.toInt()
+        val h = height.toInt()
+        if (w <= 1 || h <= 1 || view.width <= 0 || view.height <= 0) return null
+        val maxWidth = 480
+        val scale = if (w > maxWidth) maxWidth.toFloat() / w else 1f
+        val bw = (w * scale).roundToInt().coerceAtLeast(1)
+        val bh = (h * scale).roundToInt().coerceAtLeast(1)
+        val bitmap = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888)
+        return runCatching {
+            bitmap.eraseColor(android.graphics.Color.TRANSPARENT)
+            val canvas = Canvas(bitmap)
+            canvas.scale(scale, scale)
+            canvas.clipRect(0f, 0f, w.toFloat(), h.toFloat())
+            canvas.translate(-left, -top)
+            view.draw(canvas)
+            bitmap
+        }.getOrElse {
+            if (!bitmap.isRecycled) bitmap.recycle()
+            null
+        }
+    }
+
     private fun snapshotWebView(web: WebView, callback: (Bitmap?) -> Unit) {
         val w = web.width
         val h = web.height
@@ -364,7 +394,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private fun freezeAttachedPreview(tabId: String) {
         if (overlay == Overlay.TABS) return
         val tab = tabs.firstOrNull { it.id == tabId } ?: return
-        if (tab.isBookmerHome) return
+        if (tab.isBookmerHome) {
+            collectionSnapshotProvider?.invoke()?.let { commitPreview(tabId, it) }
+            return
+        }
         val web = webViews[tabId] ?: return
         if (web.width <= 0 || web.height <= 0) return
         snapshotWebView(web) { bitmap -> commitPreview(tabId, bitmap) }
@@ -422,6 +455,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun load(raw: String, inNewTab: Boolean = false, immersive: Boolean = false) {
         val url = resolveAddress(raw) ?: return
         if (url == BookmerUrls.HOME) { if (inNewTab) createTab() else openHome(); return }
+        if (currentTab.isBookmerHome && !inNewTab) freezeAttachedPreview(selectedTabId)
         if (inNewTab) createTab()
         endHideElements(cancel = true)
         endTranslateFeedbackNow()

@@ -1,7 +1,6 @@
 package com.bookmer.browser.ui
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -26,7 +25,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -36,20 +34,20 @@ import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
@@ -59,6 +57,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -71,8 +70,6 @@ import com.bookmer.browser.ui.theme.bookmerIsDarkTheme
 import com.bookmer.browser.data.BookmerIconUrl
 import com.bookmer.browser.data.BookmerItem
 import com.bookmer.browser.data.BrowserTab
-import com.bookmer.browser.data.BookmerUrls
-import com.bookmer.browser.data.ItemKind
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -90,20 +87,20 @@ fun TabsSwitcherScreen(model: BrowserViewModel) {
     val scope = rememberCoroutineScope()
     val focus = remember { Animatable(model.selectedTabIndex.toFloat()) }
     val zoom = remember { Animatable(1f) }
-    var closeLift by remember { mutableFloatStateOf(0f) }
+    val closeLift = remember { Animatable(0f) }
     var closingTabId by remember { mutableStateOf<String?>(null) }
     var closingDelta by remember { mutableFloatStateOf(0f) }
-    var isBusy by remember { mutableStateOf(true) }
+    var focusOverride by remember { mutableStateOf<Float?>(null) }
+    var closeLiftOverride by remember { mutableStateOf<Float?>(null) }
+    var isBusy by remember { mutableStateOf(false) }
     var closeMenu by remember { mutableStateOf(false) }
+    val displayFocus = focusOverride ?: focus.value
+    val displayCloseLift = closeLiftOverride ?: closeLift.value
 
     LaunchedEffect(Unit) {
-        // Deck already covers the WebView — only hydrate disk cache here (live capture
-        // happens in showOverlay before the overlay is set).
-        model.hydrateTabPreviewsFromDisk()
         zoom.snapTo(1f)
         focus.snapTo(model.selectedTabIndex.toFloat())
-        zoom.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = 1f))
-        isBusy = false
+        zoom.animateTo(0f, DeckMotion.zoom)
     }
 
     val dismiss: () -> Unit = { model.dismissOverlay() }
@@ -111,9 +108,9 @@ fun TabsSwitcherScreen(model: BrowserViewModel) {
     fun openTabAt(index: Int) {
         if (isBusy || index !in model.tabs.indices) return
         isBusy = true
+        model.selectTab(model.tabs[index].id)
         scope.launch {
-            model.selectTab(model.tabs[index].id)
-            zoom.animateTo(1f, spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = 1f))
+            zoom.animateTo(1f, DeckMotion.zoom)
             dismiss()
         }
     }
@@ -124,7 +121,7 @@ fun TabsSwitcherScreen(model: BrowserViewModel) {
         scope.launch {
             model.createTab()
             val target = (model.tabs.size - 1).toFloat()
-            focus.animateTo(target, spring(stiffness = Spring.StiffnessMedium, dampingRatio = 0.86f))
+            focus.animateTo(target, DeckMotion.deck)
             delay(140)
             isBusy = false
             openTabAt(target.roundToInt())
@@ -138,7 +135,7 @@ fun TabsSwitcherScreen(model: BrowserViewModel) {
     }
 
     fun closeFocused(screenHeight: Float) {
-        val index = focus.value.roundToInt().coerceIn(0, model.tabs.lastIndex)
+        val index = displayFocus.roundToInt().coerceIn(0, model.tabs.lastIndex)
         val id = model.tabs.getOrNull(index)?.id ?: return
         if (model.tabs.size == 1) {
             model.closeAllTabs()
@@ -147,16 +144,16 @@ fun TabsSwitcherScreen(model: BrowserViewModel) {
         }
         isBusy = true
         closingTabId = id
-        closingDelta = 0f
+        closingDelta = index - displayFocus
+        val startLift = closeLiftOverride ?: closeLift.value
+        closeLiftOverride = null
         scope.launch {
-            // Fly off screen.
-            val start = closeLift
-            val anim = Animatable(start)
-            anim.animateTo(-(screenHeight), tween(200)) { closeLift = value }
+            closeLift.snapTo(startLift)
+            closeLift.animateTo(-(screenHeight), tween(200))
             val surviving = min(index, max(model.tabs.size - 2, 0))
             model.closeTab(id)
             closingTabId = null
-            closeLift = 0f
+            closeLift.snapTo(0f)
             closingDelta = 0f
             focus.snapTo(surviving.toFloat())
             delay(120)
@@ -168,11 +165,12 @@ fun TabsSwitcherScreen(model: BrowserViewModel) {
         }
     }
 
-    BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
         val density = LocalDensity.current
         val widthPx = with(density) { maxWidth.toPx() }
         val heightPx = with(density) { maxHeight.toPx() }
-        val safeTop = with(density) { 16.dp.toPx() }
+        val statusTop = WindowInsets.statusBars.getTop(density).toFloat()
+        val safeTop = statusTop + with(density) { 10.dp.toPx() }
         val navBottom = WindowInsets.navigationBars.getBottom(density).toFloat()
         val safeBottom = with(density) { 34.dp.toPx() } + navBottom
         val metrics = remember(widthPx, heightPx, safeTop, safeBottom) {
@@ -190,46 +188,72 @@ fun TabsSwitcherScreen(model: BrowserViewModel) {
         DeckLayer(
             model = model,
             metrics = metrics,
-            focus = focus.value,
+            focus = displayFocus,
             zoom = zoom.value,
-            closeLift = closeLift,
+            closeLift = displayCloseLift,
             closingTabId = closingTabId,
             closingDelta = closingDelta,
             isBusy = isBusy,
-            onDragHorizontal = { deltaFocus ->
-                if (!isBusy) scope.launch {
-                    val last = max(model.tabs.size - 1, 0).toFloat()
-                    focus.snapTo(rubberBand(deltaFocus, 0f, last))
+            onDragStart = {
+                val now = focusOverride ?: focus.value
+                focusOverride = now
+                scope.launch {
+                    focus.stop()
+                    focus.snapTo(now)
                 }
             },
-            onDragVertical = { dy -> if (!isBusy) closeLift = min(0f, dy) },
-            onDragEnd = { phase, translation, predicted, start ->
+            onDragHorizontal = { deltaFocus ->
+                val last = max(model.tabs.size - 1, 0).toFloat()
+                focusOverride = rubberBand(deltaFocus, 0f, last)
+            },
+            onDragVertical = { dy -> closeLiftOverride = min(0f, dy) },
+            onDragEnd = { phase, translation, predicted, start, dragAnchor ->
                 when (phase) {
                     DeckDragPhase.CLOSE -> {
                         if (translation.y < -110f || predicted.y < -260f) {
                             closeFocused(heightPx)
                         } else {
-                            closeLift = 0f
                             closingTabId = null
+                            val lift = closeLiftOverride ?: closeLift.value
+                            closeLiftOverride = null
+                            scope.launch {
+                                closeLift.snapTo(lift)
+                                closeLift.animateTo(0f, DeckMotion.closeReturn)
+                            }
                         }
                     }
                     DeckDragPhase.DECK -> {
+                        val current = focusOverride ?: focus.value
+                        focusOverride = null
                         val last = max(model.tabs.size - 1, 0).toFloat()
-                        val target = focus.value.roundToInt().toFloat().coerceIn(0f, last)
+                        val step = metrics.width * DeckLayout.dragStep
+                        val travelX = if (predicted.x * translation.x >= 0f) predicted.x else translation.x
+                        val projected = dragAnchor - travelX / step
+                        val target = projected.roundToInt().toFloat().coerceIn(0f, last)
                         scope.launch {
-                            focus.animateTo(target, spring(stiffness = Spring.StiffnessMedium, dampingRatio = 0.86f))
+                            focus.stop()
+                            focus.snapTo(current)
+                            focus.animateTo(target, DeckMotion.deck)
                         }
                     }
                     DeckDragPhase.TAP -> {
-                        val hit = hitIndex(start, metrics, focus.value, model.tabs.size)
-                        openTabAt(hit ?: focus.value.roundToInt())
+                        focusOverride = null
+                        closeLiftOverride = null
+                        if (zoom.value <= 0.12f && max(abs(translation.x), abs(translation.y)) < 8f) {
+                            val hit = hitIndex(start, metrics, displayFocus, model.tabs.size)
+                            if (hit != null) openTabAt(hit)
+                        }
                     }
-                    else -> Unit
+                    else -> {
+                        focusOverride = null
+                        closeLiftOverride = null
+                    }
                 }
             },
             onBeginClose = {
-                closingTabId = model.tabs.getOrNull(focus.value.roundToInt())?.id
-                closingDelta = 0f
+                val index = displayFocus.roundToInt().coerceIn(0, model.tabs.lastIndex)
+                closingTabId = model.tabs.getOrNull(index)?.id
+                closingDelta = index - displayFocus
             },
         )
 
@@ -263,6 +287,12 @@ fun TabsSwitcherScreen(model: BrowserViewModel) {
 }
 
 private enum class DeckDragPhase { IDLE, UNDECIDED, DECK, CLOSE, TAP }
+
+private object DeckMotion {
+    val zoom = spring<Float>(dampingRatio = 1f, stiffness = 180f)
+    val deck = spring<Float>(dampingRatio = 0.88f, stiffness = 280f)
+    val closeReturn = spring<Float>(dampingRatio = 0.84f, stiffness = 380f)
+}
 
 private object DeckLayout {
     const val cardWidth = 0.76f
@@ -305,53 +335,75 @@ private fun DeckLayer(
     closingTabId: String?,
     closingDelta: Float,
     isBusy: Boolean,
+    onDragStart: () -> Unit,
     onDragHorizontal: (Float) -> Unit,
     onDragVertical: (Float) -> Unit,
-    onDragEnd: (DeckDragPhase, Offset, Offset, Offset) -> Unit,
+    onDragEnd: (DeckDragPhase, Offset, Offset, Offset, Float) -> Unit,
     onBeginClose: () -> Unit,
 ) {
     var dragAnchor by remember { mutableFloatStateOf(focus) }
     var phase by remember { mutableStateOf(DeckDragPhase.IDLE) }
+    val busyState = rememberUpdatedState(isBusy)
+    val zoomState = rememberUpdatedState(zoom)
+    val dragStart = rememberUpdatedState(onDragStart)
+    val dragHorizontal = rememberUpdatedState(onDragHorizontal)
+    val dragVertical = rememberUpdatedState(onDragVertical)
+    val dragEnd = rememberUpdatedState(onDragEnd)
+    val beginClose = rememberUpdatedState(onBeginClose)
 
     Box(
         Modifier
             .fillMaxSize()
-            .pointerInput(isBusy, model.tabs.size) {
+            .pointerInput(model.tabs.size) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
-                    if (isBusy) return@awaitEachGesture
+                    if (busyState.value) return@awaitEachGesture
+                    val startedDuringOpen = zoomState.value > 0.12f
                     phase = DeckDragPhase.UNDECIDED
                     dragAnchor = focus
                     var total = Offset.Zero
                     var claimedClose = false
+                    val tracker = VelocityTracker()
+                    tracker.addPosition(down.uptimeMillis, down.position)
                     while (true) {
                         val event = awaitPointerEvent()
                         val change = event.changes.firstOrNull() ?: break
                         val delta = change.positionChange()
                         total += delta
+                        tracker.addPosition(change.uptimeMillis, change.position)
                         if (phase == DeckDragPhase.UNDECIDED && max(abs(total.x), abs(total.y)) > 8f) {
                             if (total.y < 0f && abs(total.y) > abs(total.x) * 1.3f) {
                                 phase = DeckDragPhase.CLOSE
                                 claimedClose = true
-                                onBeginClose()
-                            } else {
+                                beginClose.value()
+                            } else if (abs(total.x) >= abs(total.y) && zoomState.value < 0.12f) {
                                 phase = DeckDragPhase.DECK
+                                dragStart.value()
                             }
                         }
                         when (phase) {
-                            DeckDragPhase.CLOSE -> onDragVertical(total.y)
+                            DeckDragPhase.CLOSE -> dragVertical.value(total.y)
                             DeckDragPhase.DECK -> {
                                 val step = metrics.width * DeckLayout.dragStep
-                                onDragHorizontal(dragAnchor - total.x / step)
+                                dragHorizontal.value(dragAnchor - total.x / step)
                             }
                             else -> Unit
                         }
                         if (claimedClose || phase == DeckDragPhase.DECK) change.consume()
                         if (!event.changes.any { it.pressed }) break
                     }
-                    val ended = if (phase == DeckDragPhase.UNDECIDED) DeckDragPhase.TAP else phase
+                    val velocity = tracker.calculateVelocity()
+                    val predicted = Offset(
+                        total.x + velocity.x * 0.16f,
+                        total.y + velocity.y * 0.16f,
+                    )
+                    val ended = when {
+                        phase != DeckDragPhase.UNDECIDED -> phase
+                        startedDuringOpen -> DeckDragPhase.IDLE
+                        else -> DeckDragPhase.TAP
+                    }
                     phase = DeckDragPhase.IDLE
-                    onDragEnd(ended, total, total * 1.35f, down.position)
+                    dragEnd.value(ended, total, predicted, down.position, dragAnchor)
                 }
             }
     ) {
@@ -359,7 +411,7 @@ private fun DeckLayer(
         model.tabs.forEachIndexed { index, tab ->
             val delta = if (tab.id == closingTabId) closingDelta else index - focus
             if (zoom > 0.3f && tab.id != model.selectedTabId) return@forEachIndexed
-            if (delta <= -4.6f || delta >= 2.2f) return@forEachIndexed
+            if (delta <= -8f || delta >= 2.2f) return@forEachIndexed
 
             val isClosing = tab.id == closingTabId
             val isZoomTarget = tab.id == model.selectedTabId && !isClosing
@@ -386,8 +438,9 @@ private fun DeckLayer(
             val cardH = with(density) { metrics.cardHeight.toDp() }
             val labelHeightPx = with(density) { 18.dp.toPx() }
             val labelGapPx = with(density) { 10.dp.toPx() }
+            val visualTop = centerY - metrics.cardHeight * scale / 2f
 
-            // Scale from center like iOS `.scaleEffect` + `.position`, so the card top stays predictable.
+            key(tab.id) {
             Box(
                 Modifier
                     .zIndex(index + if (isZoomTarget && zoom > 0f) 10_000f else 0f)
@@ -410,7 +463,6 @@ private fun DeckLayer(
                 )
             }
 
-            // Visible slice of this card (not covered by the next one) — label sits fully above it.
             val leading = max(leadingEdge(delta, metrics, focus, lastIndex), 0f)
             val covered = if (index + 1 < model.tabs.size) {
                 leadingEdge(delta + 1, metrics, focus, lastIndex)
@@ -421,11 +473,9 @@ private fun DeckLayer(
             val slice = max(trailing - leading, 22f)
             val showsTitle = slice > metrics.width * 0.3f
             val labelOpacity = if (isClosing) 1f else resting * fade(zoom)
-            // Visual top of the scaled card (center-based scale), then park the label above with a clear gap.
-            val visualCardTop = centerY - (metrics.cardHeight * restScale) / 2f
             val labelWidthPx = if (showsTitle) slice - 12f else 22f
-            val labelTop = visualCardTop - labelHeightPx - labelGapPx
-            val labelLeft = leading + slice / 2f - labelWidthPx / 2f
+            val labelTop = visualTop - labelHeightPx - labelGapPx
+            val labelLeft = leading + 10f
 
             Row(
                 Modifier
@@ -434,9 +484,11 @@ private fun DeckLayer(
                         alpha = labelOpacity
                         translationX = labelLeft
                         translationY = labelTop
+                        transformOrigin = TransformOrigin(0f, 0f)
                     }
                     .width(with(density) { labelWidthPx.toDp() })
                     .height(with(density) { labelHeightPx.toDp() }),
+                horizontalArrangement = Arrangement.Start,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 FaviconBadge(tab)
@@ -452,6 +504,7 @@ private fun DeckLayer(
                     )
                 }
             }
+            }
         }
     }
 }
@@ -465,62 +518,38 @@ private fun TabCardContent(
 ) {
     val shape = RoundedCornerShape(max(corner, 0f).dp)
     val preview = model.tabPreviews[tab.id]
-    Surface(
+    val image = remember(preview) { preview?.takeIf { !it.isRecycled }?.asImageBitmap() }
+    val cardColor = MaterialTheme.colorScheme.background
+    Box(
         modifier
-            .shadow(14.dp, shape, ambientColor = Color.Black.copy(alpha = 0.24f), spotColor = Color.Black.copy(alpha = 0.24f))
-            .clip(shape)
+            .graphicsLayer {
+                shadowElevation = 28f
+                this.shape = shape
+                clip = true
+            }
+            .background(cardColor)
             .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f), shape),
-        color = MaterialTheme.colorScheme.background,
     ) {
         when {
-            tab.isBookmerHome -> CollectionTabPreview(model, Modifier.fillMaxSize())
-            preview != null -> Image(
-                bitmap = preview.asImageBitmap(),
+            image != null -> Image(
+                bitmap = image,
                 contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
+                contentScale = ContentScale.FillWidth,
                 alignment = Alignment.TopCenter,
             )
+            tab.isBookmerHome -> CollectionTabPreviewFallback(model)
             else -> TabPreviewFallback(tab)
         }
     }
 }
 
 @Composable
-private fun CollectionTabPreview(model: BrowserViewModel, modifier: Modifier = Modifier) {
+private fun CollectionTabPreviewFallback(model: BrowserViewModel) {
     val settings = model.settings
-    val items = model.bookmarks.items
-        .filter { BookmerItem.normalizedParent(it.parentId) == BookmerUrls.ROOT }
-        .sortedWith(compareBy<BookmerItem> { it.order }.thenBy { it.title.lowercase() })
-        .take(8)
-    Box(modifier.background(if (bookmerIsDarkTheme()) Color(0xFF19191B) else Color(0xFFF7F7F9))) {
+    val background = if (bookmerIsDarkTheme()) Color(0xFF19191B) else Color(0xFFF7F7F9)
+    Box(Modifier.fillMaxSize().background(background)) {
         settings.wallpaper?.let { RemoteImage(it, Modifier.fillMaxSize(), ContentScale.Crop) }
-                    Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items.chunked(4).forEach { row ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    row.forEach { item ->
-                        Box(
-                            Modifier
-                                .weight(1f)
-                                .height(44.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Color.White.copy(alpha = 0.55f)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            if (item.kind == ItemKind.FOLDER) {
-                                Icon(Icons.Rounded.GridView, null, tint = Color.DarkGray, modifier = Modifier.size(22.dp))
-                            } else {
-                                RemoteImage(
-                                    BookmerIconUrl.candidates(item),
-                                    Modifier.size(28.dp).clip(RoundedCornerShape(6.dp)),
-                                )
-                            }
-                        }
-                    }
-                    repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
-                }
-            }
-        }
     }
 }
 
@@ -615,7 +644,7 @@ private fun depthScale(delta: Float): Float {
 
 private fun restOpacity(delta: Float): Float {
     if (delta > 1f) return max(0f, 1f - (delta - 1f) / 0.5f)
-    if (delta < -3.4f) return max(0f, 1f + (delta + 3.4f) / 0.9f)
+    if (delta < -6.5f) return max(0f, 1f + (delta + 6.5f) / 0.9f)
     return 1f
 }
 
@@ -638,7 +667,7 @@ private fun hitIndex(point: Offset, metrics: DeckMetrics, focus: Float, count: I
     val lastIndex = max(count - 1, 0).toFloat()
     for (index in (count - 1) downTo 0) {
         val delta = index - focus
-        if (delta <= -4.6f || delta >= 2.2f || restOpacity(delta) <= 0.2f) continue
+        if (delta <= -8f || delta >= 2.2f || restOpacity(delta) <= 0.2f) continue
         val scale = depthScale(delta)
         val width = metrics.cardWidth * scale
         val height = metrics.cardHeight * scale

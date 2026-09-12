@@ -8,8 +8,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -77,6 +77,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -90,6 +91,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
@@ -97,6 +99,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.abs
@@ -187,7 +190,14 @@ private enum class ChromeSheet {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun BrowserChrome(model: BrowserViewModel, modifier: Modifier = Modifier) {
+fun BrowserChrome(
+    model: BrowserViewModel,
+    modifier: Modifier = Modifier,
+    tabSlideLocked: Boolean = false,
+    onTabSlideDrag: (Float) -> Unit = {},
+    onTabSlideEnd: (dx: Float, predictedX: Float) -> Unit = { _, _ -> },
+    onTabSlideCancel: () -> Unit = {},
+) {
     var menu by remember { mutableStateOf(false) }
     var navMenu by remember { mutableStateOf(false) }
     var actionMenu by remember { mutableStateOf(false) }
@@ -199,7 +209,6 @@ fun BrowserChrome(model: BrowserViewModel, modifier: Modifier = Modifier) {
     var addressValue by remember { mutableStateOf(TextFieldValue(model.addressText)) }
     var selectAllOnFocus by remember { mutableStateOf(false) }
     val addressFocusRequester = remember { FocusRequester() }
-    val addressTapInteraction = remember { MutableInteractionSource() }
     val focus = LocalFocusManager.current
     val dismissAddressEditing = {
         addressFocused = false
@@ -214,10 +223,8 @@ fun BrowserChrome(model: BrowserViewModel, modifier: Modifier = Modifier) {
             addressValue = TextFieldValue(model.addressText)
         }
     }
-    LaunchedEffect(addressFocused) {
-        if (addressFocused) {
-            addressFocusRequester.requestFocus()
-        }
+    val requestAddressFocus = {
+        addressFocusRequester.requestFocus()
     }
     LaunchedEffect(model.selectedTabId) {
         menu = false
@@ -231,11 +238,14 @@ fun BrowserChrome(model: BrowserViewModel, modifier: Modifier = Modifier) {
     }
     val dismissMenu = { menu = false }
     val openSheet = { target: ChromeSheet -> menu = false; sheet = target }
-    // iOS AddressBarField: centered when idle, left when editing
-    val addressCentered = !addressFocused && model.showsCollectionHome
+    // iOS AddressBarField: centered when idle (title or placeholder), left when editing
+    val addressCentered = !addressFocused
     val showIdlePageButtons = !addressFocused && !model.showsCollectionHome
     val showDownloadsChrome = !addressFocused && model.downloads.isNotEmpty()
     val showAddressLeadingControl = showIdlePageButtons || showDownloadsChrome
+    val latestTabSlideDrag = rememberUpdatedState(onTabSlideDrag)
+    val latestTabSlideEnd = rememberUpdatedState(onTabSlideEnd)
+    val latestTabSlideCancel = rememberUpdatedState(onTabSlideCancel)
 
     val runNavigation = {
         if (model.showsCollectionHome) when (model.settings.startNavigationAction) {
@@ -302,7 +312,6 @@ fun BrowserChrome(model: BrowserViewModel, modifier: Modifier = Modifier) {
         Box(Modifier.weight(1f)) {
             val capsuleHorizontalPad = when {
                 addressFocused -> 12.dp
-                addressCentered -> 16.dp
                 showAddressLeadingControl -> 2.dp
                 else -> 16.dp
             }
@@ -313,10 +322,32 @@ fun BrowserChrome(model: BrowserViewModel, modifier: Modifier = Modifier) {
                     .clip(RoundedCornerShape(25.dp))
                     .background(ChromeColor)
                     .border(.6.dp, ChromeBorder, RoundedCornerShape(25.dp))
-                    .then(if (!addressFocused) addressBarSwipeGestures(model) else Modifier)
+                    .then(
+                        if (!addressFocused) {
+                            addressBarIdleGestures(
+                                tabSlideLocked = { tabSlideLocked },
+                                onTabSlideDrag = { latestTabSlideDrag.value(it) },
+                                onTabSlideEnd = { dx, predicted -> latestTabSlideEnd.value(dx, predicted) },
+                                onTabSlideCancel = { latestTabSlideCancel.value() },
+                                onSwipeUp = { model.showOverlay(Overlay.TABS) },
+                                onSwipeDown = {
+                                    if (model.settings.hideToolbar && !model.showsCollectionHome) {
+                                        model.collapseToolbarFromChrome()
+                                    }
+                                },
+                            ) {
+                                model.beginEditingAddress()
+                                addressValue = addressFieldValueOnFocus(model.addressText)
+                                selectAllOnFocus = model.addressText.isNotEmpty()
+                                requestAddressFocus()
+                            }
+                        } else {
+                            Modifier
+                        },
+                    )
                     .padding(
                         start = capsuleHorizontalPad,
-                        end = if (addressFocused || addressCentered) 12.dp else capsuleHorizontalPad,
+                        end = if (addressFocused) 12.dp else capsuleHorizontalPad,
                     ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -340,28 +371,13 @@ fun BrowserChrome(model: BrowserViewModel, modifier: Modifier = Modifier) {
                     }
                 }
                 Box(
-                    Modifier
-                        .weight(1f)
-                        .clickable(
-                            interactionSource = addressTapInteraction,
-                            indication = null,
-                            enabled = !addressFocused,
-                        ) {
-                            model.beginEditingAddress()
-                            addressFocused = true
-                            addressValue = TextFieldValue(
-                                model.addressText,
-                                if (model.addressText.isEmpty()) {
-                                    TextRange.Zero
-                                } else {
-                                    TextRange(0, model.addressText.length)
-                                },
-                            )
-                        },
+                    Modifier.weight(1f),
+                    contentAlignment = if (addressCentered) Alignment.Center else Alignment.CenterStart,
                 ) {
                     BasicTextField(
                         value = addressValue,
                         onValueChange = { next ->
+                            if (!addressFocused) return@BasicTextField
                             if (selectAllOnFocus && next.text == addressValue.text) {
                                 selectAllOnFocus = false
                                 addressValue = next.copy(selection = TextRange(0, next.text.length))
@@ -378,28 +394,31 @@ fun BrowserChrome(model: BrowserViewModel, modifier: Modifier = Modifier) {
                             .focusRequester(addressFocusRequester)
                             .onFocusChanged { state ->
                                 val nowFocused = state.isFocused
-                                if (nowFocused && !addressFocused) {
-                                    model.beginEditingAddress()
-                                    val text = model.addressText.ifEmpty { addressValue.text }
-                                    selectAllOnFocus = text.isNotEmpty()
-                                    addressValue = if (text.isNotEmpty()) {
-                                        addressFieldValueOnFocus(text)
-                                    } else {
-                                        TextFieldValue("")
+                                if (nowFocused) {
+                                    if (!addressFocused) {
+                                        model.beginEditingAddress()
+                                        val text = model.addressText.ifEmpty { addressValue.text }
+                                        selectAllOnFocus = text.isNotEmpty()
+                                        addressValue = if (text.isNotEmpty()) {
+                                            addressFieldValueOnFocus(text)
+                                        } else {
+                                            TextFieldValue("")
+                                        }
                                     }
-                                } else if (!nowFocused && addressFocused) {
+                                    addressFocused = true
+                                } else if (addressFocused) {
+                                    addressFocused = false
                                     model.cancelEditingAddress()
                                     addressValue = TextFieldValue(model.addressText)
                                 }
-                                addressFocused = nowFocused
-                            },
-                        readOnly = !addressFocused,
+                            }
+                            .graphicsLayer { alpha = if (addressFocused) 1f else 0f },
                         singleLine = true,
                         textStyle = TextStyle(
                             color = Color.White,
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Normal,
-                            textAlign = if (addressCentered) TextAlign.Center else TextAlign.Start,
+                            textAlign = TextAlign.Start,
                         ),
                         cursorBrush = SolidColor(Color.White),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
@@ -408,24 +427,37 @@ fun BrowserChrome(model: BrowserViewModel, modifier: Modifier = Modifier) {
                             focus.clearFocus()
                         }),
                         decorationBox = { field ->
-                            Box(
-                                Modifier.fillMaxWidth(),
-                                contentAlignment = if (addressCentered) Alignment.Center else Alignment.CenterStart,
-                            ) {
-                                if (model.addressText.isEmpty()) {
+                            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
+                                if (addressFocused && addressValue.text.isEmpty()) {
                                     Text(
-                                        if (model.showsCollectionHome) "Search or URL" else model.currentTab.title,
+                                        "Search or URL",
                                         color = Color.White.copy(alpha = .68f),
                                         fontSize = 17.sp,
                                         maxLines = 1,
-                                        textAlign = if (addressCentered) TextAlign.Center else TextAlign.Start,
-                                        modifier = if (addressCentered) Modifier.fillMaxWidth() else Modifier,
                                     )
                                 }
                                 field()
                             }
                         },
                     )
+                    if (!addressFocused) {
+                        val idleLabel = when {
+                            model.showsCollectionHome && model.addressText.isEmpty() -> "Search or URL"
+                            model.showsCollectionHome -> model.addressText
+                            model.currentTab.title.isNotBlank() -> model.currentTab.title
+                            model.addressText.isNotBlank() -> model.addressText
+                            else -> "Search or URL"
+                        }
+                        Text(
+                            idleLabel,
+                            color = Color.White.copy(alpha = if (model.showsCollectionHome && model.addressText.isEmpty()) .68f else 1f),
+                            fontSize = 17.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = if (addressCentered) TextAlign.Center else TextAlign.Start,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                 }
                 if (showIdlePageButtons) {
                     Box {
@@ -696,45 +728,54 @@ private fun PermissionSubmenu(
 }
 
 /**
- * Address-bar swipe gestures (iOS parity). Keep separate from tap-to-focus (clickable on field).
+ * Idle capsule: tap edits the URL; horizontal swipe switches tabs. The label never pans.
+ * Use down-relative positions — [positionChange] goes to 0 after consume and broke tab swipe.
  */
-private fun addressBarSwipeGestures(model: BrowserViewModel): Modifier {
-    return Modifier.pointerInput(model.selectedTabId, model.settings.hideToolbar, model.showsCollectionHome) {
-        var totalX = 0f
-        var totalY = 0f
-        detectDragGestures(
-            onDragStart = {
-                totalX = 0f
-                totalY = 0f
-            },
-            onDrag = { change, amount ->
-                totalX += amount.x
-                totalY += amount.y
-                if (abs(totalX) > 18f || abs(totalY) > 18f) change.consume()
-            },
-            onDragEnd = {
-                val dx = totalX
-                val dy = totalY
-                totalX = 0f
-                totalY = 0f
-                when {
-                    dy < -48f && abs(dy) > abs(dx) -> model.showOverlay(Overlay.TABS)
-                    dy > 56f && abs(dy) > abs(dx) -> {
-                        if (model.settings.hideToolbar && !model.showsCollectionHome) {
-                            model.collapseToolbarFromChrome()
-                        }
-                    }
-                    abs(dx) > 50f && abs(dx) > abs(dy) -> {
-                        if (dx < 0f) model.goToNextTabOrCreate()
-                        else if (model.canGoToPreviousTab) model.goToPreviousTab()
-                    }
+private fun addressBarIdleGestures(
+    tabSlideLocked: () -> Boolean,
+    onTabSlideDrag: (Float) -> Unit,
+    onTabSlideEnd: (Float, Float) -> Unit,
+    onTabSlideCancel: () -> Unit,
+    onSwipeUp: () -> Unit,
+    onSwipeDown: () -> Unit,
+    onTap: () -> Unit,
+): Modifier {
+    return Modifier.pointerInput(Unit) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            if (tabSlideLocked()) return@awaitEachGesture
+            val start = down.position
+            val tracker = VelocityTracker()
+            tracker.addPosition(down.uptimeMillis, down.position)
+            var totalX = 0f
+            var totalY = 0f
+            while (true) {
+                val event = awaitPointerEvent()
+                val change = event.changes.firstOrNull() ?: break
+                totalX = change.position.x - start.x
+                totalY = change.position.y - start.y
+                tracker.addPosition(change.uptimeMillis, change.position)
+                if (abs(totalX) > abs(totalY) && abs(totalX) > 10f) {
+                    onTabSlideDrag(totalX)
                 }
-            },
-            onDragCancel = {
-                totalX = 0f
-                totalY = 0f
-            },
-        )
+                if (abs(totalX) > 10f || abs(totalY) > 10f) change.consume()
+                if (!event.changes.any { it.pressed }) break
+            }
+            val predictedX = totalX + tracker.calculateVelocity().x * 0.16f
+            when {
+                abs(totalX) < 10f && abs(totalY) < 10f -> onTap()
+                totalY < -48f && abs(totalY) > abs(totalX) -> {
+                    onTabSlideCancel()
+                    onSwipeUp()
+                }
+                totalY > 56f && abs(totalY) > abs(totalX) -> {
+                    onTabSlideCancel()
+                    onSwipeDown()
+                }
+                abs(totalX) > abs(totalY) -> onTabSlideEnd(totalX, predictedX)
+                else -> onTabSlideCancel()
+            }
+        }
     }
 }
 

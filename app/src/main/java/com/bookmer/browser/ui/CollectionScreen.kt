@@ -38,6 +38,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -53,6 +54,9 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -71,35 +75,58 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 @Composable
-fun CollectionScreen(model: BrowserViewModel, modifier: Modifier = Modifier) {
+fun CollectionScreen(model: BrowserViewModel, modifier: Modifier = Modifier, isPreview: Boolean = false) {
     val repository = model.bookmarks
     val settings = model.preferences.settings
     val background = if (bookmerIsDarkTheme()) Color(0xFF19191B) else Color(0xFFF7F7F9)
     val labelColor = if (settings.wallpaper != null) Color.fromHex(settings.wallpaperTextColor, Color.White) else MaterialTheme.colorScheme.onBackground
-    Box(modifier.background(background)) {
+    val hostView = LocalView.current
+    var captureLeft by remember { mutableFloatStateOf(0f) }
+    var captureTop by remember { mutableFloatStateOf(0f) }
+    var captureWidth by remember { mutableFloatStateOf(0f) }
+    var captureHeight by remember { mutableFloatStateOf(0f) }
+    DisposableEffect(hostView) {
+        model.collectionSnapshotProvider = {
+            model.snapshotCollectionRegion(hostView, captureLeft, captureTop, captureWidth, captureHeight)
+        }
+        onDispose { model.collectionSnapshotProvider = null }
+    }
+    Box(
+        modifier
+            .onGloballyPositioned { coords ->
+                val bounds = coords.boundsInRoot()
+                captureLeft = bounds.left
+                captureTop = bounds.top
+                captureWidth = bounds.width
+                captureHeight = bounds.height
+            }
+            .background(background),
+    ) {
         settings.wallpaper?.let { wallpaper ->
             RemoteImage(wallpaper, Modifier.fillMaxSize().blur(settings.wallpaperBlur.dp), ContentScale.Crop)
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = settings.wallpaperDim.coerceIn(0f, .8f))))
         }
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            if (repository.folderStack.isNotEmpty()) Breadcrumbs(model, labelColor)
+            if (repository.folderStack.isNotEmpty()) Breadcrumbs(model, labelColor, enabled = !isPreview)
             when (repository.currentContentView(settings.collectionViewMode)) {
-                ContentViewMode.LIST -> CollectionList(model, Modifier.weight(1f))
-                ContentViewMode.THUMBNAIL -> CollectionThumbnails(model, Modifier.weight(1f))
-                else -> CollectionGrid(model, labelColor, Modifier.weight(1f))
+                ContentViewMode.LIST -> CollectionList(model, Modifier.weight(1f), isPreview)
+                ContentViewMode.THUMBNAIL -> CollectionThumbnails(model, Modifier.weight(1f), isPreview)
+                else -> CollectionGrid(model, labelColor, Modifier.weight(1f), isPreview)
             }
         }
     }
 }
 
 @Composable
-private fun CollectionList(model: BrowserViewModel, modifier: Modifier) {
-    LazyColumn(modifier.fillMaxWidth(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+private fun CollectionList(model: BrowserViewModel, modifier: Modifier, isPreview: Boolean = false) {
+    LazyColumn(modifier.fillMaxWidth(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(6.dp), userScrollEnabled = !isPreview) {
         items(model.bookmarks.visibleItems, key = { it.id }) { item ->
-            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface.copy(alpha = .88f)).clickable {
-                if (item.kind == ItemKind.FOLDER) model.bookmarks.navigateToFolder(item.id) else item.targetUrl?.let(model::load)
-                model.updateNavigationState()
-            }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface.copy(alpha = .88f)).then(
+                if (isPreview) Modifier else Modifier.clickable {
+                    if (item.kind == ItemKind.FOLDER) model.bookmarks.navigateToFolder(item.id) else item.targetUrl?.let(model::load)
+                    model.updateNavigationState()
+                }
+            ).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 BookmerTileIcon(item, model, Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)))
                 Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                     Text(item.title, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
@@ -111,13 +138,15 @@ private fun CollectionList(model: BrowserViewModel, modifier: Modifier) {
 }
 
 @Composable
-private fun CollectionThumbnails(model: BrowserViewModel, modifier: Modifier) {
-    LazyVerticalGrid(GridCells.Fixed(2), modifier.fillMaxWidth(), contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 120.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+private fun CollectionThumbnails(model: BrowserViewModel, modifier: Modifier, isPreview: Boolean = false) {
+    LazyVerticalGrid(GridCells.Fixed(2), modifier.fillMaxWidth(), contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 120.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), userScrollEnabled = !isPreview) {
         itemsIndexed(model.bookmarks.visibleItems, key = { _, item -> item.id }) { _, item ->
-            Column(Modifier.clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surface.copy(alpha = .9f)).clickable {
-                if (item.kind == ItemKind.FOLDER) model.bookmarks.navigateToFolder(item.id) else item.targetUrl?.let(model::load)
-                model.updateNavigationState()
-            }) {
+            Column(Modifier.clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surface.copy(alpha = .9f)).then(
+                if (isPreview) Modifier else Modifier.clickable {
+                    if (item.kind == ItemKind.FOLDER) model.bookmarks.navigateToFolder(item.id) else item.targetUrl?.let(model::load)
+                    model.updateNavigationState()
+                }
+            )) {
                 val preview = item.customPreviewImage ?: item.previewImage ?: item.iconUrl
                 Box(Modifier.fillMaxWidth().aspectRatio(1.45f).background(Color.fromHex(item.customPreviewBackground ?: item.iconBackground, Color(0xFFEFEFF2))), contentAlignment = Alignment.Center) {
                     if (item.kind == ItemKind.FOLDER && preview.isNullOrBlank()) BookmerTileIcon(item, model, Modifier.size(66.dp).clip(RoundedCornerShape(16.dp)))
@@ -130,14 +159,14 @@ private fun CollectionThumbnails(model: BrowserViewModel, modifier: Modifier) {
 }
 
 @Composable
-private fun Breadcrumbs(model: BrowserViewModel, color: Color) {
+private fun Breadcrumbs(model: BrowserViewModel, color: Color, enabled: Boolean = true) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = { model.bookmarks.navigateToFolder(BookmerUrls.ROOT); model.updateNavigationState() }, Modifier.size(36.dp)) {
+        IconButton(onClick = { model.bookmarks.navigateToFolder(BookmerUrls.ROOT); model.updateNavigationState() }, Modifier.size(36.dp), enabled = enabled) {
             Icon(Icons.Rounded.Home, "Collection", tint = color)
         }
         model.bookmarks.folderStack.forEach { id ->
             Text("›", color = color.copy(alpha = .6f), modifier = Modifier.padding(horizontal = 3.dp))
-            TextButton(onClick = { model.bookmarks.navigateToFolder(id); model.updateNavigationState() }) {
+            TextButton(onClick = { model.bookmarks.navigateToFolder(id); model.updateNavigationState() }, enabled = enabled) {
                 Text(if (id == BookmerUrls.HIDDEN) "Hidden" else if (id == BookmerUrls.TAGS) "Tags" else model.bookmarks.items.firstOrNull { it.id == id }?.title ?: "Folder", color = color)
             }
         }
@@ -145,7 +174,7 @@ private fun Breadcrumbs(model: BrowserViewModel, color: Color) {
 }
 
 @Composable
-private fun CollectionGrid(model: BrowserViewModel, labelColor: Color, modifier: Modifier) {
+private fun CollectionGrid(model: BrowserViewModel, labelColor: Color, modifier: Modifier, isPreview: Boolean = false) {
     val visible = model.bookmarks.visibleItems
     LazyVerticalGrid(
         columns = GridCells.Fixed(4),
@@ -153,15 +182,16 @@ private fun CollectionGrid(model: BrowserViewModel, labelColor: Color, modifier:
         contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 120.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalArrangement = Arrangement.spacedBy(18.dp),
+        userScrollEnabled = !isPreview,
     ) {
         itemsIndexed(visible, key = { _, item -> item.id }) { index, item ->
-            CollectionTile(model, item, index, labelColor)
+            CollectionTile(model, item, index, labelColor, isPreview)
         }
     }
 }
 
 @Composable
-private fun CollectionTile(model: BrowserViewModel, item: BookmerItem, index: Int, labelColor: Color) {
+private fun CollectionTile(model: BrowserViewModel, item: BookmerItem, index: Int, labelColor: Color, isPreview: Boolean = false) {
     var menu by remember { mutableStateOf(false) }
     var edit by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -176,11 +206,14 @@ private fun CollectionTile(model: BrowserViewModel, item: BookmerItem, index: In
         modifier = Modifier.padding(horizontal = 3.dp).zIndex(if (dragging) 4f else 0f)
             .offset { IntOffset(dragX.roundToInt(), dragY.roundToInt()) }
             .scale(if (dragging) 1.08f else 1f)
-            .clickable {
-                if (item.kind == ItemKind.FOLDER) { model.bookmarks.navigateToFolder(item.id); model.updateNavigationState() }
-                else item.targetUrl?.let(model::load)
-            }
-            .pointerInput(item.id, visible.size) {
+            .then(
+                if (isPreview) Modifier else Modifier.clickable {
+                    if (item.kind == ItemKind.FOLDER) { model.bookmarks.navigateToFolder(item.id); model.updateNavigationState() }
+                    else item.targetUrl?.let(model::load)
+                }
+            )
+            .then(
+                if (isPreview) Modifier else Modifier.pointerInput(item.id, visible.size) {
                 val dragSlop = viewConfiguration.touchSlop
                 detectDragGesturesAfterLongPress(
                     onDragStart = { dragging = true; dragX = 0f; dragY = 0f },
@@ -212,7 +245,8 @@ private fun CollectionTile(model: BrowserViewModel, item: BookmerItem, index: In
                         } else hoverFolder = null
                     }
                 )
-            },
+            }
+            ),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box {

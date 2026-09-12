@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Bookmer Browser</string>
+    <string name="app_name">Bookmer</string>
     <string name="widget_description">Open a Bookmer widget shortcut on your Home Screen. Resize from 1×1 up.</string>
     <string name="control_tile_label">Bookmer</string>
     <string name="control_tile_label_b">Bookmer 2</string>
